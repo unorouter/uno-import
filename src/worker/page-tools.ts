@@ -58,24 +58,27 @@ export const rotateVpn = async (): Promise<boolean> => {
 // probing with fetch would rotate until it ran out of rolls and conclude the
 // whole provider was down.
 export async function probeExit(page: PageWithCursor): Promise<boolean> {
-  // /fresh, not /: the root 302s and the redirect destroys the execution
-  // context that evaluate() is about to run in.
-  for (const url of ["https://datacat.run/fresh", "https://janitorai.com/"]) {
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await new Promise((r) => setTimeout(r, 1500));
-      const title = await page.evaluate("document.title");
-      if (
-        typeof title === "string" &&
-        /just a moment|attention required/i.test(title)
-      ) {
-        return false;
-      }
-    } catch {
-      return false;
-    }
+  // datacat ONLY. janitorai deliberately is not a gate: it answers most exits
+  // with a JS challenge that the browser clears per request, so requiring it
+  // here rejects exits that work and the loop rotates until it gives up. datacat
+  // is also the source that must work, since it carries the card.
+  //
+  // /fresh, not /: the root 302s and the redirect destroys the execution context
+  // that evaluate() is about to run in.
+  try {
+    await page.goto("https://datacat.run/fresh", {
+      waitUntil: "domcontentloaded",
+      timeout: 45000,
+    });
+    await new Promise((r) => setTimeout(r, 1500));
+    const title = await page.evaluate("document.title");
+    return !(
+      typeof title === "string" &&
+      /just a moment|attention required/i.test(title)
+    );
+  } catch {
+    return false;
   }
-  return true;
 }
 
 // Roll until both targets load, or give up and let the caller back off. Bounded

@@ -57,8 +57,12 @@ export const jobsRoutes = new Elysia()
     },
     { params: t.Object({ id: t.String() }) },
   )
+  // ok reports whether the API can accept work, not whether the last probe
+  // passed: a challenged exit is recoverable per job, and failing readiness for
+  // it takes the Service out of the cluster's endpoints for no reason.
   .get("/api/health", async () => ({
-    ok: workerReady(),
+    ok: true,
+    exitUsable: workerReady(),
     exitIp: await exitIp(),
     queueDepth: queue.queueDepth(),
   }));

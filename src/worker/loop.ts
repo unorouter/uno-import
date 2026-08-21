@@ -6,6 +6,7 @@ import type { UniformCard } from "../types/uniform-card";
 import {
   findUsableExit,
   gracefulShutdown,
+  probeExit,
   registerBrowserForShutdown,
 } from "./page-tools";
 import * as queue from "./queue";
@@ -42,11 +43,13 @@ export async function startWorker() {
   page = p;
   await page.setViewport({ width: 1920, height: 1080 });
 
-  // Roll to an exit that can actually load the targets before accepting work,
-  // so the first user request does not pay for the search.
-  ready = await findUsableExit(page);
+  // Probe once, but do NOT roll at startup. Rotating rebuilds gluetun's
+  // firewall, and inbound rules go with it, so a pod that rolls on boot is
+  // unreachable from the cluster for as long as the search runs and reports
+  // itself unhealthy the whole time. Jobs roll on demand instead.
+  ready = await probeExit(page);
   if (!ready)
-    console.error("[worker] no usable exit at startup; will retry per job");
+    console.warn("[worker] startup exit is challenged; jobs will roll on demand");
 
   setInterval(() => queue.sweep(), 60_000);
 
