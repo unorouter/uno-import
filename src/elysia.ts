@@ -1,4 +1,4 @@
-import { openapi } from "@elysiajs/openapi";
+import { fromTypes, openapi } from "@elysiajs/openapi";
 import { Elysia } from "elysia";
 import { debugRoutes } from "./api/routes/debug.routes";
 import { jobsRoutes } from "./api/routes/jobs.routes";
@@ -8,7 +8,17 @@ const TOKEN = process.env.API_TOKEN;
 if (!TOKEN) throw new Error("API_TOKEN is required");
 
 export const app = new Elysia()
-  .use(openapi())
+  // Response schemas are derived from the handlers' own return types, so the
+  // document cannot drift from the code. fromTypes reads an EMITTED
+  // declaration, not the source: pointing it at src/ logs "Couldn't find
+  // generated declaration file" and silently produces paths with no response
+  // bodies, which looks like it worked. `bun run build` writes it.
+  .use(
+    openapi({
+      documentation: { openapi: "3.1.0" },
+      references: fromTypes("dist/elysia.d.ts"),
+    }),
+  )
   // Only unorouter submits work. Without this the service is an open browser
   // pointed at other people's sites, which is the sort of thing that gets an
   // exit range blocked for everyone.

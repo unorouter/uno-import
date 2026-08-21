@@ -28,7 +28,11 @@ export const jobsRoutes = new Elysia()
         return status(429, { error: "too many jobs in flight" });
       }
       const job = queue.submit(url.href, body.userId);
-      return { jobId: job.id, status: job.status };
+      // Widened to string on purpose: fromTypes resolves the response off the
+      // emitted declaration, and a type imported from another module comes
+      // through as an unresolved reference, which drops the whole route's
+      // response schema from the document without warning.
+      return { jobId: job.id, status: job.status as string };
     },
     {
       body: t.Object({
@@ -43,8 +47,11 @@ export const jobsRoutes = new Elysia()
       const job = queue.get(params.id);
       if (!job) return status(404, { error: "not found" });
       return {
-        status: job.status,
-        result: job.result ?? null,
+        status: job.status as string,
+        // The card is documented as an open object rather than the full
+        // UniformCard: same reason as above, a cross-module type reference
+        // silently costs the route its schema. The shape is in uniform-card.ts.
+        result: (job.result ?? null) as Record<string, unknown> | null,
         error: job.error ?? null,
       };
     },

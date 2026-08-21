@@ -6,7 +6,8 @@
     "start": "bun src/elysia.ts",
     "dev": "bun --watch src/elysia.ts",
     "typecheck": "tsc --noEmit",
-    "prettier": "prettier -w ."
+    "prettier": "prettier -w .",
+    "build": "tsc"
   },
   "dependencies": {
     "@elysiajs/openapi": "1.4.15",
