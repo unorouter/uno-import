@@ -69,10 +69,16 @@ spec:
                 { secretKeyRef: { name: uno-cards-env, key: OPENVPN_PASSWORD } }
             - name: HTTP_CONTROL_SERVER_ADDRESS
               value: ":8000"
-            # The kill-switch would otherwise drop traffic to the cluster network,
-            # which is how the API stops answering its own Service.
+            # The kill-switch drops everything not bound for the tunnel, and that
+            # includes REPLIES to callers inside the cluster: without these
+            # subnets the API answers on localhost while every request from
+            # another pod or from the kubelet times out against a healthy server.
             - name: FIREWALL_OUTBOUND_SUBNETS
               value: "10.42.0.0/16,10.43.0.0/16"
+            # Inbound arrives on eth0; replies must leave the same way rather
+            # than following the default route into the tunnel.
+            - name: FIREWALL_INPUT_PORTS
+              value: "4000"
             - name: DNS_KEEP_NAMESERVER
               value: "on"
           volumeMounts:
@@ -101,12 +107,18 @@ spec:
           resources:
             requests: { memory: 512Mi, cpu: 200m }
             limits: { memory: 2Gi }
+          # exec, not httpGet: the kubelet probes the POD IP, and replies to it
+          # route back out through the tunnel and never arrive, so an httpGet
+          # probe times out against a server that answers fine on localhost. The
+          # pod then sits at 1/2 Ready with nothing wrong with it.
           readinessProbe:
-            httpGet: { path: /api/health, port: 4000 }
+            exec:
+              command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
             initialDelaySeconds: 20
             periodSeconds: 15
           livenessProbe:
-            httpGet: { path: /api/health, port: 4000 }
+            exec:
+              command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
             # Startup rolls the tunnel until an exit loads the targets, which can
             # take a few minutes; liveness must outlast that or it kills the pod
             # mid-search and restarts the same search.

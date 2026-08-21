@@ -10,7 +10,7 @@ WORKDIR /app
 # enough, because the challenge these sites serve is what a stock headless build
 # gets caught by. xvfb is what lets that chrome run without a display.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      wget gnupg ca-certificates xvfb dumb-init \
+      wget curl gnupg ca-certificates xvfb dumb-init \
   && wget -q -O /etc/apt/keyrings/google.asc https://dl-ssl.google.com/linux/linux_signing_key.pub \
   && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.asc] https://dl.google.com/linux/chrome/deb/ stable main" \
        > /etc/apt/sources.list.d/google-chrome.list \
