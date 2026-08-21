@@ -107,8 +107,13 @@ export async function fetchRisu(
   }
 
   const risuai = data.extensions?.risuai ?? {};
+  // The icon asset is the card art; the rest are emotion sprites that belong
+  // in the character's asset list rather than as its avatar.
+  const assets = out.assets ?? [];
+  const icon = assets.find((a) => /^icon/i.test(a.name)) ?? assets[0];
   return {
     kind: "rich-character",
+    avatar: icon,
     source: "risu",
     sourceUrl: url.href,
     card: out.card as { spec: string; data: Record<string, unknown> },

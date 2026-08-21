@@ -60,6 +60,9 @@ async function fetchPngCard(
     source,
     sourceUrl,
     card: card as UniformCard["card"],
+    // The PNG we just parsed IS the card art, so keep it rather than making
+    // the client fetch an image we already have in hand.
+    avatar: { name: "avatar", mimeType: "image/png", base64: out.b64 },
     // Neither source exposes lorebooks separately; anything attached rides
     // inside the card's own character_book.
     lorebooks: [],
