@@ -42,12 +42,12 @@ spec:
     metadata:
       labels: { app: uno-cards }
     spec:
-      # A new GHCR package is private until someone flips it, and the kubelet
-      # pulls anonymously, so without this the image 401s no matter how public
-      # the repo is. The older services' packages happen to be public, which is
-      # why they carry no pull secret.
+      # NOT the cluster-wide ghcr-pull secret: that credential 403s on this
+      # package while the push credential resolves it, so uno-cards-pull is built
+      # from the latter. The kubelet pulls anonymously otherwise, and a new GHCR
+      # package is private until flipped by hand in the web UI.
       imagePullSecrets:
-        - name: ghcr-pull
+        - name: uno-cards-pull
       # Lets dumb-init see chrome's orphans across containers in the pod.
       shareProcessNamespace: true
       containers:
