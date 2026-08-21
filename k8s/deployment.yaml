@@ -111,18 +111,30 @@ spec:
           # route back out through the tunnel and never arrive, so an httpGet
           # probe times out against a server that answers fine on localhost. The
           # pod then sits at 1/2 Ready with nothing wrong with it.
+          # timeoutSeconds MUST exceed the curl -m 5 it runs: the probe's own default
+          # is 1s, so the kubelet killed the check ("command timed out") while curl was
+          # still waiting on a health handler that blocks during a tunnel reroll. That
+          # dropped readiness to 0 on a pod with nothing wrong and paged
+          # DeploymentNoReplicas.
           readinessProbe:
             exec:
               command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
-            initialDelaySeconds: 20
+            timeoutSeconds: 8
             periodSeconds: 15
+            failureThreshold: 3
+          # Startup rolls the tunnel until an exit loads the targets, which can take a
+          # few minutes. A startupProbe holds readiness AND liveness off until the first
+          # success, so that search cannot register as an outage or get killed halfway.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
+            timeoutSeconds: 8
+            periodSeconds: 15
+            failureThreshold: 40   # up to 10min of rerolling
           livenessProbe:
             exec:
               command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
-            # Startup rolls the tunnel until an exit loads the targets, which can
-            # take a few minutes; liveness must outlast that or it kills the pod
-            # mid-search and restarts the same search.
-            initialDelaySeconds: 300
+            timeoutSeconds: 8
             periodSeconds: 60
             failureThreshold: 5
       volumes:
