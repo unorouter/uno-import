@@ -1,5 +1,6 @@
 import { connect, type PageWithCursor } from "puppeteer-real-browser";
 import * as datacat from "../adapters/datacat";
+import * as png from "../adapters/png-sources";
 import { recoverLorebooks } from "../adapters/janitorai";
 import { toEntries } from "../adapters/entries";
 import type { UniformCard } from "../types/uniform-card";
@@ -20,6 +21,8 @@ export const workerReady = () => ready;
 
 async function runJob(job: queue.Job): Promise<UniformCard> {
   const url = new URL(job.url);
+  if (png.matchesChub(url)) return png.fetchChub(page!, url);
+  if (png.matchesRisu(url)) return png.fetchRisu(page!, url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
   const { card, retryIds } = await datacat.fetchCard(page!, url);
