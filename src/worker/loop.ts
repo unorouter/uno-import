@@ -38,10 +38,35 @@ async function runJob(job: queue.Job): Promise<UniformCard> {
 }
 
 export async function startWorker() {
+  // No --remote-debugging-port here: the driver picks its own and connects to
+  // it, and forcing one makes that connection ECONNREFUSED. To inspect a running
+  // browser, read the port back out of the process instead:
+  //   kubectl exec deploy/uno-import -c api -- sh -c \
+  //     'P=$(ps aux | grep -o "\-\-remote-debugging-port=[0-9]*" | head -1 | cut -d= -f2); \
+  //      curl -s 127.0.0.1:$P/json | tr "," "\n" | grep url'
+  // That is how the tab was caught sitting on disney.com mid-job.
   const { browser, page: p } = await connect({ turnstile: true });
   registerBrowserForShutdown(browser);
-  page = p;
+
+  // Work on our OWN tab. connect() returns chrome's startup tab, and something
+  // in the stack keeps steering it elsewhere: caught over CDP sitting on
+  // disney.com with a recaptcha worker while a job was mid-flight. A dedicated
+  // page is not touched by that, and the startup tab is left to whatever wants
+  // it.
+  page = ((await browser.newPage()) ?? p) as PageWithCursor;
   await page.setViewport({ width: 1920, height: 1080 });
+
+  // Confirm datacat's 18+ gate before their scripts run. Its Exit button sets
+  // location to disney.com, and the turnstile solver clicks buttons on the page,
+  // so an unconfirmed overlay walks the tab off the site about a second after
+  // the load succeeds; every relative fetch then 404s from disney.de and reads
+  // like the API rejecting us. This sets the same flag Confirm would.
+  await page.evaluateOnNewDocument(`
+    try {
+      localStorage.setItem("age_gate_ok", "true");
+      sessionStorage.setItem("age_gate_ok", "true");
+    } catch (e) {}
+  `);
 
   // Probe once, but do NOT roll at startup. Rotating rebuilds gluetun's
   // firewall, and inbound rules go with it, so a pod that rolls on boot is

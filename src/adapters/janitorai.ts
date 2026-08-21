@@ -1,6 +1,6 @@
 import type { PageWithCursor } from "puppeteer-real-browser";
 import type { UniformCard } from "../types/uniform-card";
-import { gotoOrigin } from "../worker/page-tools";
+import { evaluateOn } from "../worker/page-tools";
 
 // datacat lists every lorebook attached to a character but stores `script: null`
 // whenever its own scrape got a 404, and its scrape is not always current. Ask
@@ -42,11 +42,11 @@ export async function recoverLorebooks(
 ): Promise<UniformCard["lorebooks"]> {
   if (scriptIds.length === 0) return [];
 
-  await gotoOrigin(page, "https://janitorai.com/");
-
-  const rows = (await page.evaluate(
+  const rows = await evaluateOn<Recovered[]>(
+    page,
+    "https://janitorai.com/",
     `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
-  )) as Recovered[];
+  );
 
   const out: UniformCard["lorebooks"] = [];
   for (const r of rows ?? []) {

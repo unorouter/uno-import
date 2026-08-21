@@ -5,7 +5,7 @@ import type {
   UniformLorebook,
 } from "../types/uniform-card";
 import { toEntries } from "./entries";
-import { gotoOrigin } from "../worker/page-tools";
+import { evaluateOn } from "../worker/page-tools";
 
 const UUID_RE = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
 
@@ -72,15 +72,11 @@ export async function fetchCard(
   // /fresh rather than /, which 302s there: the redirect tears down the
   // execution context underneath page.evaluate and the call dies with
   // "Execution context was destroyed" even though the page loaded fine.
-  await gotoOrigin(page, "https://datacat.run/fresh");
-
-  const raw = (await page.evaluate(
-    `${FETCH_IN_PAGE}(${JSON.stringify(id)})`,
-  )) as {
+  const raw = await evaluateOn<{
     error?: string;
     card?: unknown;
     scripts?: Script[];
-  };
+  }>(page, "https://datacat.run/fresh", `${FETCH_IN_PAGE}(${JSON.stringify(id)})`);
   // Report WHERE the failure happened. A 404 from identify means the evaluate
   // ran somewhere other than datacat's origin, which is a different bug from
   // datacat rejecting us, and the two are indistinguishable without this.

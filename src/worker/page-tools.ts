@@ -97,9 +97,11 @@ export async function findUsableExit(
   return false;
 }
 
-// goto can resolve without the page having moved, which leaves the browser on
-// chrome's startup tab; a relative fetch from there 404s in a way that reads
-// exactly like the target rejecting the request. Retry until the URL agrees.
+// The tab does not stay where it is put: inspected over CDP mid-job it had moved
+// to https://www.disney.com/ with a recaptcha webworker alongside it, so a
+// relative fetch ran against an origin with no such route and returned 404s that
+// read exactly like the target rejecting the request. Verifying after goto is
+// not enough, because the drift happens between that check and the evaluate.
 export async function gotoOrigin(
   page: PageWithCursor,
   url: string,
@@ -118,6 +120,24 @@ export async function gotoOrigin(
     await new Promise((r) => setTimeout(r, 1000 * i));
   }
   throw new Error(`navigation to ${url} landed on ${page.url()}`);
+}
+
+// Evaluate only while the page is still on the expected origin, re-navigating if
+// it drifted in between. Without the recheck the script runs wherever the tab
+// ended up, and the failure surfaces as a confusing HTTP status from the site we
+// never actually asked.
+export async function evaluateOn<T>(
+  page: PageWithCursor,
+  url: string,
+  script: string,
+): Promise<T> {
+  const origin = new URL(url).origin;
+  if (!page.url().startsWith(origin)) await gotoOrigin(page, url);
+  const result = (await page.evaluate(script)) as T;
+  if (!page.url().startsWith(origin)) {
+    throw new Error(`page drifted to ${page.url()} during evaluate`);
+  }
+  return result;
 }
 
 type ClosableBrowser = { close: () => Promise<void> };
