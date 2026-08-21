@@ -68,18 +68,22 @@ export async function fetchCard(
   const id = characterId(url.href);
   if (!id) throw new Error("no character id in url");
 
-  // Land on /fresh rather than /, which 302s there: the redirect tears down the
+  // Always navigate. Testing the host first looks like a cheap skip, but the
+  // probe leaves the browser on datacat too, including when it left it on a
+  // challenge page, and evaluating there fetches a relative path from an origin
+  // that has no such route: identify comes back 404 while curl from the same
+  // pod gets 200.
+  //
+  // /fresh rather than /, which 302s there: the redirect tears down the
   // execution context underneath page.evaluate and the call dies with
   // "Execution context was destroyed" even though the page loaded fine.
-  if (!page.url().startsWith("https://datacat.run")) {
-    await page.goto("https://datacat.run/fresh", {
-      waitUntil: "domcontentloaded",
-      timeout: 45000,
-    });
-    // Their app rewrites the URL again once it boots, so give that a moment
-    // rather than evaluating into a context that is about to be replaced.
-    await new Promise((r) => setTimeout(r, 2500));
-  }
+  await page.goto("https://datacat.run/fresh", {
+    waitUntil: "domcontentloaded",
+    timeout: 45000,
+  });
+  // Their app rewrites the URL again once it boots, so give that a moment
+  // rather than evaluating into a context that is about to be replaced.
+  await new Promise((r) => setTimeout(r, 2500));
 
   const raw = (await page.evaluate(
     `${FETCH_IN_PAGE}(${JSON.stringify(id)})`,
@@ -88,7 +92,10 @@ export async function fetchCard(
     card?: unknown;
     scripts?: Script[];
   };
-  if (raw?.error) throw new Error(`datacat: ${raw.error}`);
+  // Report WHERE the failure happened. A 404 from identify means the evaluate
+  // ran somewhere other than datacat's origin, which is a different bug from
+  // datacat rejecting us, and the two are indistinguishable without this.
+  if (raw?.error) throw new Error(`datacat: ${raw.error} (at ${page.url()})`);
 
   const card =
     typeof raw.card === "string"

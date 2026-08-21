@@ -41,12 +41,14 @@ export async function recoverLorebooks(
 ): Promise<UniformCard["lorebooks"]> {
   if (scriptIds.length === 0) return [];
 
-  if (!page.url().startsWith("https://janitorai.com")) {
-    await page.goto("https://janitorai.com/", {
-      waitUntil: "load",
-      timeout: 45000,
-    });
-  }
+  // Navigate unconditionally: being on the host already says nothing about
+  // whether the document is the app or a challenge page, and a relative fetch
+  // from the wrong one 404s while the same request from the pod succeeds.
+  await page.goto("https://janitorai.com/", {
+    waitUntil: "domcontentloaded",
+    timeout: 45000,
+  });
+  await new Promise((r) => setTimeout(r, 1500));
 
   const rows = (await page.evaluate(
     `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
