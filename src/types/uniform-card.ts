@@ -31,9 +31,60 @@ export type SkippedLorebook = {
 };
 
 export type UniformCard = {
+  kind?: "character";
   source: string;
   sourceUrl: string;
   card: { spec: string; spec_version?: string; data: Record<string, unknown> };
   lorebooks: UniformLorebook[];
   skipped: SkippedLorebook[];
 };
+
+// The user's own profile rather than a character. Only LoreBary publishes these;
+// every other site treats a persona as private account data.
+export type UniformPersona = {
+  name: string;
+  description: string;
+  // Free-form and source-specific (archetype, gender, pronouns, age, traits).
+  // Kept so the importer can compose a description without this file having to
+  // know which fields each site invents.
+  attributes?: Record<string, string>;
+};
+
+// An asset shipped inside a bundle. Bytes are base64 because passing binary out
+// of page.evaluate any other way means a JSON array of a million numbers.
+export type UniformAsset = {
+  name: string;
+  mimeType: string;
+  base64: string;
+};
+
+// One shape per entity, discriminated so a single queue and a single poll route
+// serve them all. `character` carries no `kind` for compatibility with the
+// results unorouter already reads.
+export type ImportResult =
+  | UniformCard
+  | {
+      kind: "lorebook";
+      source: string;
+      sourceUrl: string;
+      lorebooks: UniformLorebook[];
+      skipped: SkippedLorebook[];
+    }
+  | {
+      kind: "persona";
+      source: string;
+      sourceUrl: string;
+      personas: UniformPersona[];
+    }
+  | {
+      kind: "module";
+      source: string;
+      sourceUrl: string;
+      name: string;
+      lorebooks: UniformLorebook[];
+      // RisuAI shapes, passed through untouched: unorouter already stores these
+      // on a character and has parsers for both.
+      regexScripts?: unknown;
+      triggers?: unknown;
+      assets: UniformAsset[];
+    };

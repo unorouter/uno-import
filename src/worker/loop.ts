@@ -1,9 +1,11 @@
 import { connect, type PageWithCursor } from "puppeteer-real-browser";
 import * as datacat from "../adapters/datacat";
 import * as png from "../adapters/png-sources";
+import { fetchChubLorebook, matchesChubLorebook } from "../adapters/chub-lorebook";
+import { fetchLorebaryPersona, matchesLorebary } from "../adapters/lorebary";
 import { fetchLorebook, matchesLorebook, recoverLorebooks } from "../adapters/janitorai";
 import { toEntries } from "../adapters/entries";
-import type { UniformCard } from "../types/uniform-card";
+import type { ImportResult } from "../types/uniform-card";
 import {
   findUsableExit,
   gracefulShutdown,
@@ -28,11 +30,15 @@ let ready = false;
 
 export const workerReady = () => ready;
 
-async function runJob(job: queue.Job): Promise<UniformCard> {
+async function runJob(job: queue.Job): Promise<ImportResult> {
   const url = new URL(job.url);
   // A standalone lorebook link, checked before the character adapters: both
   // live on janitorai.com and only the path tells them apart.
   if (matchesLorebook(url)) return fetchLorebook(page!, url, toEntries);
+  // chub /lorebooks/ before the character adapter: both live on chub.ai and only
+  // the first path segment tells them apart.
+  if (matchesChubLorebook(url)) return fetchChubLorebook(page!, url, toEntries);
+  if (matchesLorebary(url)) return fetchLorebaryPersona(page!, url);
   if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (png.matchesRisu(url)) return png.fetchRisu(page!, url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
