@@ -24,10 +24,10 @@ export const app = new Elysia()
   // exit range blocked for everyone.
   .onBeforeHandle(({ request, path, status }) => {
     if (path === "/api/health") return;
-    // The echo endpoint cannot use our token: the whole point is that a
-    // JanitorAI chat posts to it, and that request carries the USER's key, not
-    // ours. DEBUG_ECHO is its gate instead, and it 404s while unset.
-    if (path === "/api/debug/echo") return;
+    // The echo endpoints cannot use our token: the whole point is that a
+    // JanitorAI chat posts to them, and that request carries the USER's key,
+    // not ours. DEBUG_ECHO is their gate instead, and they 404 while unset.
+    if (path.endsWith("/chat/completions") || path === "/v1/models") return;
     if (request.headers.get("authorization") !== `Bearer ${TOKEN}`) {
       return status(401, { error: "unauthorized" });
     }

@@ -23,14 +23,25 @@ const setVpn = async (status: "stopped" | "running") => {
 // gluetun's own lookup returns an empty string whenever its upstream IP service
 // fails, which says nothing about whether the tunnel is up, so fall back to
 // resolving the exit directly rather than reporting a healthy tunnel as blank.
+//
+// Both calls are time-boxed. This is read by /api/health, and a challenged exit
+// makes an unbounded fetch hang: the probe then times out against a server that
+// is running fine and the pod never becomes ready.
+const withTimeout = (ms: number) => AbortSignal.timeout(ms);
+
 export const exitIp = async (): Promise<string> => {
   try {
-    const res = await fetch(`${GLUETUN}/v1/publicip/ip`);
+    const res = await fetch(`${GLUETUN}/v1/publicip/ip`, {
+      signal: withTimeout(1500),
+    });
     const json = (await res.json()) as { public_ip?: string };
     if (json.public_ip) return json.public_ip;
   } catch {}
   try {
-    return (await (await fetch("https://api.ipify.org")).text()).trim();
+    const res = await fetch("https://api.ipify.org", {
+      signal: withTimeout(2500),
+    });
+    return (await res.text()).trim();
   } catch {
     return "";
   }
