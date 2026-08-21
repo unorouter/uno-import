@@ -66,11 +66,7 @@ export async function probeExit(page: PageWithCursor): Promise<boolean> {
   // /fresh, not /: the root 302s and the redirect destroys the execution context
   // that evaluate() is about to run in.
   try {
-    await page.goto("https://datacat.run/fresh", {
-      waitUntil: "domcontentloaded",
-      timeout: 45000,
-    });
-    await new Promise((r) => setTimeout(r, 1500));
+    await gotoOrigin(page, "https://datacat.run/fresh", 1);
     const title = await page.evaluate("document.title");
     return !(
       typeof title === "string" &&
@@ -99,6 +95,29 @@ export async function findUsableExit(
     if (!(await rotateVpn())) return false;
   }
   return false;
+}
+
+// goto can resolve without the page having moved, which leaves the browser on
+// chrome's startup tab; a relative fetch from there 404s in a way that reads
+// exactly like the target rejecting the request. Retry until the URL agrees.
+export async function gotoOrigin(
+  page: PageWithCursor,
+  url: string,
+  attempts = 3,
+): Promise<void> {
+  const origin = new URL(url).origin;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      // Single-page apps rewrite the URL after boot, so settle before reading it.
+      await new Promise((r) => setTimeout(r, 2000));
+      if (page.url().startsWith(origin)) return;
+    } catch {
+      if (i === attempts) throw new Error(`navigation to ${url} failed`);
+    }
+    await new Promise((r) => setTimeout(r, 1000 * i));
+  }
+  throw new Error(`navigation to ${url} landed on ${page.url()}`);
 }
 
 type ClosableBrowser = { close: () => Promise<void> };

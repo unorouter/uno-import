@@ -1,5 +1,6 @@
 import type { PageWithCursor } from "puppeteer-real-browser";
 import type { UniformCard } from "../types/uniform-card";
+import { gotoOrigin } from "../worker/page-tools";
 
 // datacat lists every lorebook attached to a character but stores `script: null`
 // whenever its own scrape got a 404, and its scrape is not always current. Ask
@@ -41,14 +42,7 @@ export async function recoverLorebooks(
 ): Promise<UniformCard["lorebooks"]> {
   if (scriptIds.length === 0) return [];
 
-  // Navigate unconditionally: being on the host already says nothing about
-  // whether the document is the app or a challenge page, and a relative fetch
-  // from the wrong one 404s while the same request from the pod succeeds.
-  await page.goto("https://janitorai.com/", {
-    waitUntil: "domcontentloaded",
-    timeout: 45000,
-  });
-  await new Promise((r) => setTimeout(r, 1500));
+  await gotoOrigin(page, "https://janitorai.com/");
 
   const rows = (await page.evaluate(
     `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
