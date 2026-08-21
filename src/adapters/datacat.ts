@@ -50,7 +50,30 @@ const FETCH_IN_PAGE = `(async (id) => {
   const body = await res.json();
   const c = body.character;
   if (!c) return { error: "empty" };
+  const avatarUrl = String(c.avatar || "");
+  let avatar = null;
+  if (avatarUrl) {
+    const src = /^https?:/.test(avatarUrl)
+      ? avatarUrl
+      : "https://ella.janitorai.com/bot-avatars/" + avatarUrl;
+    try {
+      const r = await fetch(src);
+      if (r.ok) {
+        const buf = new Uint8Array(await r.arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < buf.length; i += 8192) {
+          bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
+        }
+        avatar = {
+          name: "avatar",
+          mimeType: r.headers.get("content-type") || "image/webp",
+          base64: btoa(bin),
+        };
+      }
+    } catch (e) {}
+  }
   return {
+    avatar,
     card: c.chara_card_v2_json,
     scripts: (c.scripts || []).map((s) => ({
       id: s.id, type: s.type, title: s.title,
@@ -76,6 +99,7 @@ export async function fetchCard(
     error?: string;
     card?: unknown;
     scripts?: Script[];
+    avatar?: { name: string; mimeType: string; base64: string } | null;
   }>(page, "https://datacat.run/fresh", `${FETCH_IN_PAGE}(${JSON.stringify(id)})`);
   // Report WHERE the failure happened. A 404 from identify means the evaluate
   // ran somewhere other than datacat's origin, which is a different bug from
@@ -127,6 +151,7 @@ export async function fetchCard(
       source: "datacat",
       sourceUrl: url.href,
       card: card as UniformCard["card"],
+      avatar: raw.avatar ?? undefined,
       lorebooks,
       skipped,
     },

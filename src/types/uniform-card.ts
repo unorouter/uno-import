@@ -30,10 +30,23 @@ export type SkippedLorebook = {
   reason: "private" | "not_found";
 };
 
+// An asset shipped inside a bundle. Bytes are base64 because passing binary out
+// of page.evaluate any other way means a JSON array of a million numbers.
+export type UniformAsset = {
+  name: string;
+  mimeType: string;
+  base64: string;
+};
+
 export type UniformCard = {
   kind?: "character";
   source: string;
   sourceUrl: string;
+  // The card image. Sources differ: chub and risu serve a PNG that IS the
+  // avatar, JanitorAI puts a URL in data.avatar, and a card fetched as JSON
+  // carries no image at all, so without this every link import lands without
+  // a picture while a dropped file keeps one.
+  avatar?: UniformAsset;
   card: { spec: string; spec_version?: string; data: Record<string, unknown> };
   lorebooks: UniformLorebook[];
   skipped: SkippedLorebook[];
@@ -48,14 +61,6 @@ export type UniformPersona = {
   // Kept so the importer can compose a description without this file having to
   // know which fields each site invents.
   attributes?: Record<string, string>;
-};
-
-// An asset shipped inside a bundle. Bytes are base64 because passing binary out
-// of page.evaluate any other way means a JSON array of a million numbers.
-export type UniformAsset = {
-  name: string;
-  mimeType: string;
-  base64: string;
 };
 
 // One shape per entity, discriminated so a single queue and a single poll route
@@ -84,6 +89,7 @@ export type ImportResult =
       kind: "rich-character";
       source: string;
       sourceUrl: string;
+      avatar?: UniformAsset;
       card: { spec: string; spec_version?: string; data: Record<string, unknown> };
       lorebooks: UniformLorebook[];
       // RisuAI shapes, passed through untouched: unorouter already stores these
