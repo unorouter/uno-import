@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: uno-cards
+  namespace: services
+spec:
+  selector: { app: uno-cards }
+  ports:
+    - port: 4000
+      targetPort: 4000
+---
+# Reaching gluetun's control server unauthenticated requires this file. Without
+# it every rotate call answers "Unauthorized" and silently does nothing: the exit
+# IP never changes, so the rotation loop burns its rolls against one address and
+# reports the provider as dead.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: uno-cards-gluetun-auth
+  namespace: services
+data:
+  config.toml: |
+    [[roles]]
+    name = "cards"
+    routes = ["GET /v1/publicip/ip", "GET /v1/vpn/status", "PUT /v1/vpn/status"]
+    auth = "none"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uno-cards
+  namespace: services
+spec:
+  # ONE browser and ONE tunnel. A second replica would rotate the exit out from
+  # under the other's in-flight page load.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: uno-cards }
+  template:
+    metadata:
+      labels: { app: uno-cards }
+    spec:
+      # Lets dumb-init see chrome's orphans across containers in the pod.
+      shareProcessNamespace: true
+      containers:
+        - name: vpn
+          image: qmcgaw/gluetun:v3.40
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: VPN_SERVICE_PROVIDER
+              value: "private internet access"
+            - name: VPN_TYPE
+              value: openvpn
+            - name: OPENVPN_USER
+              valueFrom:
+                { secretKeyRef: { name: uno-cards-env, key: OPENVPN_USER } }
+            - name: OPENVPN_PASSWORD
+              valueFrom:
+                { secretKeyRef: { name: uno-cards-env, key: OPENVPN_PASSWORD } }
+            - name: HTTP_CONTROL_SERVER_ADDRESS
+              value: ":8000"
+            # The kill-switch would otherwise drop traffic to the cluster network,
+            # which is how the API stops answering its own Service.
+            - name: FIREWALL_OUTBOUND_SUBNETS
+              value: "10.42.0.0/16,10.43.0.0/16"
+            - name: DNS_KEEP_NAMESERVER
+              value: "on"
+          volumeMounts:
+            - name: gluetun-auth
+              mountPath: /gluetun/auth
+          resources:
+            requests: { memory: 64Mi, cpu: 20m }
+            limits: { memory: 256Mi }
+        - name: api
+          # pinned by build-local.sh; ArgoCD rolls it out. Never :latest, a
+          # floating tag never changes the manifest so no deploy happens.
+          image: ghcr.io/unorouter/uno-cards:PLACEHOLDER
+          env:
+            - name: API_TOKEN
+              valueFrom:
+                { secretKeyRef: { name: uno-cards-env, key: API_TOKEN } }
+          envFrom:
+            - secretRef: { name: uno-cards-env }
+          ports:
+            - containerPort: 4000
+          # Chrome needs real shared memory; the 64MB default causes it to crash
+          # mid-render and orphan its process tree.
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          resources:
+            requests: { memory: 512Mi, cpu: 200m }
+            limits: { memory: 2Gi }
+          readinessProbe:
+            httpGet: { path: /api/health, port: 4000 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: { path: /api/health, port: 4000 }
+            # Startup rolls the tunnel until an exit loads the targets, which can
+            # take a few minutes; liveness must outlast that or it kills the pod
+            # mid-search and restarts the same search.
+            initialDelaySeconds: 300
+            periodSeconds: 60
+            failureThreshold: 5
+      volumes:
+        - name: gluetun-auth
+          configMap: { name: uno-cards-gluetun-auth }
+        - name: dshm
+          emptyDir: { medium: Memory, sizeLimit: 1Gi }
