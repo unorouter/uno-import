@@ -2,18 +2,15 @@ import type { PageWithCursor } from "puppeteer-real-browser";
 import type { UniformCard } from "../types/uniform-card";
 import { gotoOrigin } from "../worker/page-tools";
 
-// chub and risuai hand over a v2 card as a PNG with the JSON in a tEXt chunk,
-// rather than as an API response. Both are fetched through the browser like
-// every other source: chub's API challenges datacenter IPs even though its CDN
-// does not, and going through the page keeps one code path instead of two.
+// chub hands over a v2 card as a PNG with the JSON in a tEXt chunk rather than
+// as an API response. Fetched through the browser like every other source: its
+// API challenges datacenter IPs even though its CDN does not.
 
 const UUID_RE = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
 
 const CHUB_HOSTS = /^(www\.)?(chub\.ai|characterhub\.org)$/i;
-const RISU_HOSTS = /^realm\.risuai\.net$/i;
 
 export const matchesChub = (url: URL) => CHUB_HOSTS.test(url.hostname);
-export const matchesRisu = (url: URL) => RISU_HOSTS.test(url.hostname);
 
 // Read the PNG in the page and hand back base64: transferring bytes out of
 // evaluate() any other way means a JSON array of 800k numbers.
@@ -116,16 +113,4 @@ export async function fetchChub(
     }
   }
   return card;
-}
-
-export function fetchRisu(page: PageWithCursor, url: URL): Promise<UniformCard> {
-  const id = UUID_RE.exec(url.href)?.[0].toLowerCase();
-  if (!id) throw new Error("risu: no character id in url");
-  return fetchPngCard(
-    page,
-    "https://realm.risuai.net/",
-    `https://realm.risuai.net/api/v1/download/png-v3/${id}?non_commercial=true`,
-    "risu",
-    url.href,
-  );
 }

@@ -77,10 +77,14 @@ export type ImportResult =
       personas: UniformPersona[];
     }
   | {
-      kind: "module";
+      // A character that also ships lorebooks, scripts and assets. RisuRealm is
+      // the only source that publishes all of it together; its actual "module"
+      // format has zero published items, so this is what that support turned
+      // out to mean in practice.
+      kind: "rich-character";
       source: string;
       sourceUrl: string;
-      name: string;
+      card: { spec: string; spec_version?: string; data: Record<string, unknown> };
       lorebooks: UniformLorebook[];
       // RisuAI shapes, passed through untouched: unorouter already stores these
       // on a character and has parsers for both.
