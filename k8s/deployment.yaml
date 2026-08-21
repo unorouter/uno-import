@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: uno-cards
+  name: uno-import
   namespace: services
 spec:
-  selector: { app: uno-cards }
+  selector: { app: uno-import }
   ports:
     - port: 4000
       targetPort: 4000
@@ -16,7 +16,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: uno-cards-gluetun-auth
+  name: uno-import-gluetun-auth
   namespace: services
 data:
   config.toml: |
@@ -28,7 +28,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: uno-cards
+  name: uno-import
   namespace: services
 spec:
   # ONE browser and ONE tunnel. A second replica would rotate the exit out from
@@ -37,17 +37,17 @@ spec:
   strategy:
     type: Recreate
   selector:
-    matchLabels: { app: uno-cards }
+    matchLabels: { app: uno-import }
   template:
     metadata:
-      labels: { app: uno-cards }
+      labels: { app: uno-import }
     spec:
       # NOT the cluster-wide ghcr-pull secret: that credential 403s on this
-      # package while the push credential resolves it, so uno-cards-pull is built
+      # package while the push credential resolves it, so uno-import-pull is built
       # from the latter. The kubelet pulls anonymously otherwise, and a new GHCR
       # package is private until flipped by hand in the web UI.
       imagePullSecrets:
-        - name: uno-cards-pull
+        - name: uno-import-pull
       # Lets dumb-init see chrome's orphans across containers in the pod.
       shareProcessNamespace: true
       containers:
@@ -63,10 +63,10 @@ spec:
               value: openvpn
             - name: OPENVPN_USER
               valueFrom:
-                { secretKeyRef: { name: uno-cards-env, key: OPENVPN_USER } }
+                { secretKeyRef: { name: uno-import-env, key: OPENVPN_USER } }
             - name: OPENVPN_PASSWORD
               valueFrom:
-                { secretKeyRef: { name: uno-cards-env, key: OPENVPN_PASSWORD } }
+                { secretKeyRef: { name: uno-import-env, key: OPENVPN_PASSWORD } }
             - name: HTTP_CONTROL_SERVER_ADDRESS
               value: ":8000"
             # The kill-switch drops everything not bound for the tunnel, and that
@@ -90,13 +90,13 @@ spec:
         - name: api
           # pinned by build-local.sh; ArgoCD rolls it out. Never :latest, a
           # floating tag never changes the manifest so no deploy happens.
-          image: ghcr.io/unorouter/uno-cards:989ebe0b98c7c144a5f763ee4b6bb08fef93a190
+          image: ghcr.io/unorouter/uno-import:989ebe0b98c7c144a5f763ee4b6bb08fef93a190
           env:
             - name: API_TOKEN
               valueFrom:
-                { secretKeyRef: { name: uno-cards-env, key: API_TOKEN } }
+                { secretKeyRef: { name: uno-import-env, key: API_TOKEN } }
           envFrom:
-            - secretRef: { name: uno-cards-env }
+            - secretRef: { name: uno-import-env }
           ports:
             - containerPort: 4000
           # Chrome needs real shared memory; the 64MB default causes it to crash
@@ -127,6 +127,6 @@ spec:
             failureThreshold: 5
       volumes:
         - name: gluetun-auth
-          configMap: { name: uno-cards-gluetun-auth }
+          configMap: { name: uno-import-gluetun-auth }
         - name: dshm
           emptyDir: { medium: Memory, sizeLimit: 1Gi }
