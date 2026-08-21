@@ -1,7 +1,7 @@
 import { connect, type PageWithCursor } from "puppeteer-real-browser";
 import * as datacat from "../adapters/datacat";
 import * as png from "../adapters/png-sources";
-import { recoverLorebooks } from "../adapters/janitorai";
+import { fetchLorebook, matchesLorebook, recoverLorebooks } from "../adapters/janitorai";
 import { toEntries } from "../adapters/entries";
 import type { UniformCard } from "../types/uniform-card";
 import {
@@ -14,6 +14,15 @@ import * as queue from "./queue";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// How long one job may keep trying. Generous, because the alternative is
+// failing a request that a few more rolls would have served, and the client is
+// polling rather than holding a connection open.
+const JOB_DEADLINE_MS = 10 * 60_000;
+// Rolls per failure before re-attempting the fetch. Small: a fresh exit is
+// worth trying the actual request on rather than spending the budget proving
+// exits good with the probe.
+const ROLLS_PER_ATTEMPT = 3;
+
 let page: PageWithCursor | null = null;
 let ready = false;
 
@@ -21,7 +30,10 @@ export const workerReady = () => ready;
 
 async function runJob(job: queue.Job): Promise<UniformCard> {
   const url = new URL(job.url);
-  if (png.matchesChub(url)) return png.fetchChub(page!, url);
+  // A standalone lorebook link, checked before the character adapters: both
+  // live on janitorai.com and only the path tells them apart.
+  if (matchesLorebook(url)) return fetchLorebook(page!, url, toEntries);
+  if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (png.matchesRisu(url)) return png.fetchRisu(page!, url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
@@ -87,25 +99,32 @@ export async function startWorker() {
       await sleep(400);
       continue;
     }
-    try {
-      queue.finish(job, await runJob(job));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // A challenged exit looks like a fetch failure from in-page code, so treat
-      // the first failure as possibly-the-exit and retry once on a fresh one.
-      if (await findUsableExit(page!, 5)) {
-        try {
-          queue.finish(job, await runJob(job));
-          continue;
-        } catch (retryErr) {
-          queue.fail(
-            job,
-            retryErr instanceof Error ? retryErr.message : String(retryErr),
-          );
-          continue;
+    // Keep rolling until the job succeeds or runs out of time. A fixed number of
+    // attempts is the wrong bound here: exits are drawn from a shared pool that
+    // is largely flagged at some hours and mostly clean at others, so "5 rolls"
+    // is not a measure of anything, and giving up on a working request because
+    // the pool was bad for a minute is the failure users actually see.
+    //
+    // A deadline is the real bound. The queue is per-user rate limited, so a
+    // long retry cannot monopolise the browser, and the caller is polling and
+    // can give up on its own.
+    const deadline = Date.now() + JOB_DEADLINE_MS;
+    let lastError = "";
+    for (let attempt = 1; ; attempt++) {
+      try {
+        queue.finish(job, await runJob(job));
+        break;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        if (Date.now() > deadline) {
+          queue.fail(job, lastError);
+          break;
         }
+        console.warn(`[job] attempt ${attempt} failed: ${lastError}`);
+        // A challenged exit surfaces as a fetch failure from in-page code, so
+        // treat any failure as possibly-the-exit and move to a fresh one.
+        await findUsableExit(page!, ROLLS_PER_ATTEMPT);
       }
-      queue.fail(job, message);
     }
   }
 }

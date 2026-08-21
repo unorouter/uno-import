@@ -35,6 +35,43 @@ type Recovered = {
   settings?: string | null;
 };
 
+const SCRIPT_URL_RE =
+  /\/(?:hampter\/)?script\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
+
+// A lorebook shared on its own, rather than one attached to a character. The
+// page URL and the API path carry the same id, so both forms work.
+export const lorebookId = (input: string) =>
+  SCRIPT_URL_RE.exec(input)?.[1]?.toLowerCase() ?? null;
+
+export const matchesLorebook = (url: URL) =>
+  /(^|\.)(janitorai\.com|janitor\.ai)$/i.test(url.hostname) &&
+  lorebookId(url.pathname) !== null;
+
+// Returns a card-shaped result carrying only lorebooks, so one job type and one
+// response shape serve both imports.
+export async function fetchLorebook(
+  page: PageWithCursor,
+  url: URL,
+  toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
+): Promise<UniformCard> {
+  const id = lorebookId(url.pathname);
+  if (!id) throw new Error("janitorai: no lorebook id in url");
+
+  const books = await recoverLorebooks(page, [id], toEntries);
+  if (books.length === 0) {
+    // The author kept the code private, or deleted it. Both answer the same way
+    // and neither is recoverable, so say which rather than returning nothing.
+    throw new Error("janitorai: lorebook is private or no longer exists");
+  }
+  return {
+    source: "janitorai",
+    sourceUrl: url.href,
+    card: { spec: "lorebook", data: {} },
+    lorebooks: books,
+    skipped: [],
+  };
+}
+
 export async function recoverLorebooks(
   page: PageWithCursor,
   scriptIds: string[],

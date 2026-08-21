@@ -6,6 +6,10 @@ import type { UniformEntry } from "../types/uniform-card";
 type JanitorEntry = {
   key?: string[];
   keysecondary?: string[];
+  // CCv2 spelling, used by chub and by any character_book embedded in a card.
+  // JanitorAI uses the singular; both otherwise carry the same fields.
+  keys?: string[];
+  secondary_keys?: string[];
   content?: string;
   comment?: string;
   name?: string;
@@ -30,7 +34,12 @@ export function toEntries(raw: string): UniformEntry[] {
 
   const out: UniformEntry[] = [];
   parsed.forEach((e: JanitorEntry, i) => {
-    const keys = Array.isArray(e.key) ? e.key.filter(Boolean) : [];
+    const keyList = Array.isArray(e.key)
+      ? e.key
+      : Array.isArray(e.keys)
+        ? e.keys
+        : [];
+    const keys = keyList.filter(Boolean);
     // A keyless entry never matches unless it is always-on, so it would import
     // as dead weight.
     if (!e.content) return;
@@ -38,7 +47,11 @@ export function toEntries(raw: string): UniformEntry[] {
 
     out.push({
       keys,
-      secondaryKeys: e.keysecondary?.length ? e.keysecondary : undefined,
+      secondaryKeys: e.keysecondary?.length
+        ? e.keysecondary
+        : e.secondary_keys?.length
+          ? e.secondary_keys
+          : undefined,
       content: e.content,
       comment: e.comment || e.name || undefined,
       enabled: e.enabled !== false,
