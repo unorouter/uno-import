@@ -20,11 +20,17 @@ const setVpn = async (status: "stopped" | "running") => {
   if (!res.ok) throw new Error(`vpn ${status}: HTTP ${res.status}`);
 };
 
+// gluetun's own lookup returns an empty string whenever its upstream IP service
+// fails, which says nothing about whether the tunnel is up, so fall back to
+// resolving the exit directly rather than reporting a healthy tunnel as blank.
 export const exitIp = async (): Promise<string> => {
   try {
     const res = await fetch(`${GLUETUN}/v1/publicip/ip`);
     const json = (await res.json()) as { public_ip?: string };
-    return json.public_ip ?? "";
+    if (json.public_ip) return json.public_ip;
+  } catch {}
+  try {
+    return (await (await fetch("https://api.ipify.org")).text()).trim();
   } catch {
     return "";
   }
@@ -52,9 +58,12 @@ export const rotateVpn = async (): Promise<boolean> => {
 // probing with fetch would rotate until it ran out of rolls and conclude the
 // whole provider was down.
 export async function probeExit(page: PageWithCursor): Promise<boolean> {
-  for (const url of ["https://datacat.run/", "https://janitorai.com/"]) {
+  // /fresh, not /: the root 302s and the redirect destroys the execution
+  // context that evaluate() is about to run in.
+  for (const url of ["https://datacat.run/fresh", "https://janitorai.com/"]) {
     try {
-      await page.goto(url, { waitUntil: "load", timeout: 45000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      await new Promise((r) => setTimeout(r, 1500));
       const title = await page.evaluate("document.title");
       if (
         typeof title === "string" &&
