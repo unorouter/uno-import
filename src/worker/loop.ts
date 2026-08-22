@@ -43,7 +43,7 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
   if (matchesLorebary(url)) return fetchLorebaryPersona(page!, url);
   if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (matchesRisu(url)) return fetchRisu(page!, url, toEntries);
-  if (matchesSaucepan(url)) return fetchSaucepan(page!, url);
+  if (matchesSaucepan(url)) return fetchSaucepan(url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
   const { card, retryIds } = await datacat.fetchCard(page!, url);
@@ -125,7 +125,11 @@ export async function startWorker() {
         break;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        if (Date.now() > deadline) {
+        // Saucepan is fetched directly rather than through the page, so its
+        // failures say something about the request and nothing about the exit,
+        // and rerolling one would burn the whole deadline on a card that is
+        // simply not there.
+        if (Date.now() > deadline || lastError.startsWith("saucepan:")) {
           queue.fail(job, lastError);
           break;
         }
