@@ -5,6 +5,16 @@ import { fetchChubLorebook, matchesChubLorebook } from "../adapters/chub-loreboo
 import { fetchLorebaryPersona, matchesLorebary } from "../adapters/lorebary";
 import { fetchRisu, matchesRisu } from "../adapters/risurealm";
 import {
+  fetchBotbooru,
+  fetchBotbooruLorebook,
+  matchesBotbooru,
+  matchesBotbooruLorebook,
+} from "../adapters/botbooru";
+import {
+  fetchCharacterTavern,
+  matchesCharacterTavern,
+} from "../adapters/character-tavern";
+import {
   fetchSaucepan,
   fetchSaucepanLorebook,
   matchesSaucepan,
@@ -48,6 +58,9 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
   if (matchesLorebary(url)) return fetchLorebaryPersona(page!, url);
   if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (matchesRisu(url)) return fetchRisu(page!, url, toEntries);
+  if (matchesBotbooruLorebook(url)) return fetchBotbooruLorebook(url);
+  if (matchesBotbooru(url)) return fetchBotbooru(url);
+  if (matchesCharacterTavern(url)) return fetchCharacterTavern(url);
   if (matchesSaucepanLorebook(url)) return fetchSaucepanLorebook(url);
   if (matchesSaucepan(url)) return fetchSaucepan(url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
@@ -131,11 +144,12 @@ export async function startWorker() {
         break;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        // Saucepan is fetched directly rather than through the page, so its
-        // failures say something about the request and nothing about the exit,
-        // and rerolling one would burn the whole deadline on a card that is
-        // simply not there.
-        if (Date.now() > deadline || lastError.startsWith("saucepan:")) {
+        // These three are fetched directly rather than through the page, so
+        // their failures say something about the request and nothing about the
+        // exit, and rerolling one would burn the whole deadline on a card that
+        // is simply not there.
+        const direct = /^(saucepan|botbooru|character-tavern):/.test(lastError);
+        if (Date.now() > deadline || direct) {
           queue.fail(job, lastError);
           break;
         }
