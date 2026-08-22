@@ -87,15 +87,29 @@ function toEntries(book: RawBook): UniformEntry[] {
   });
 }
 
-async function fetchBook(numberId: string): Promise<UniformLorebook | null> {
+async function fetchBook(
+  numberId: string,
+  fallbackName?: string,
+): Promise<UniformLorebook | null> {
   const book = await json<RawBook>(
     `https://botbooru.com/api/lorebooks/${numberId}/download.json`,
   );
   if (!book) return null;
   const entries = toEntries(book);
   if (entries.length === 0) return null;
+
+  // The export carries an empty `name`, so the title comes from the catalogue
+  // entry; without it every book imports as "Botbooru lorebook <number>".
+  let title = book.name?.trim();
+  if (!title) {
+    const meta = await json<{ title?: string }>(
+      `https://botbooru.com/api/lorebooks/${numberId}`,
+    );
+    title = meta?.title?.trim();
+  }
+
   return {
-    name: book.name || `Botbooru lorebook ${numberId}`,
+    name: title || fallbackName || `Botbooru lorebook ${numberId}`,
     scanDepth: book.scan_depth,
     entries,
   };
@@ -178,7 +192,7 @@ export async function fetchBotbooru(url: URL): Promise<ImportResult> {
   // Books the uploader attached alongside the card rather than inside it.
   for (const ref of post.companion_lorebooks ?? []) {
     if (ref?.number == null) continue;
-    const book = await fetchBook(String(ref.number));
+    const book = await fetchBook(String(ref.number), ref.title);
     if (book) lorebooks.push(book);
   }
 
