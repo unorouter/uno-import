@@ -29,6 +29,11 @@ const UUID_RE = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
 export const matchesSaucepan = (url: URL) =>
   /^(www\.)?saucepan\.ai$/i.test(url.hostname);
 
+// Both kinds of link carry a bare uuid, so the PATH is the only thing that says
+// whether it names a companion or a standalone lorebook.
+export const matchesSaucepanLorebook = (url: URL) =>
+  matchesSaucepan(url) && /^\/lorebooks?\//i.test(url.pathname);
+
 const companionId = (input: string) => UUID_RE.exec(input)?.[0] ?? null;
 
 type Fragment = { text: string; key: number; proof: number };
@@ -132,6 +137,27 @@ function chapterToEntries(title: string, text: string, from: number): UniformEnt
   });
 }
 
+// A lorebook link imports the book on its own, which is the same fetch the
+// companion path makes once it has an id.
+export async function fetchSaucepanLorebook(url: URL): Promise<ImportResult> {
+  const id = companionId(url.href);
+  if (!id) throw new Error("saucepan: no lorebook id in url");
+  if (!hasSaucepanAuth()) {
+    throw new Error("saucepan: lorebook entries need a signed-in fetch");
+  }
+
+  const book = await fetchLorebookById(id);
+  if (!book) throw new Error("saucepan: lorebook not found");
+
+  return {
+    kind: "lorebook",
+    source: "saucepan",
+    sourceUrl: url.href,
+    lorebooks: [book],
+    skipped: [],
+  };
+}
+
 type LorebookRef = { id?: string; name?: string };
 type LorebookDetail = { name?: string; content?: Array<{ title?: string; text?: string }> };
 
@@ -154,31 +180,38 @@ async function fetchLorebooks(companionId: string): Promise<UniformLorebook[]> {
   const books: UniformLorebook[] = [];
   for (const ref of list) {
     if (!ref?.id) continue;
-    const detail = await withSaucepanAuth(
-      (token) =>
-        fetch(`https://saucepan.ai/api/v1/lorebooks/${ref.id}`, {
-          headers: { accept: "application/json", authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        }),
-      async (res) => (res.ok ? ((await res.json()) as LorebookDetail) : null),
-    );
-    if (!detail) continue;
-
-    const entries: UniformEntry[] = [];
-    for (const chapter of detail.content ?? []) {
-      entries.push(
-        ...chapterToEntries(
-          String(chapter?.title ?? "").trim() || "Lore",
-          String(chapter?.text ?? ""),
-          entries.length,
-        ),
-      );
-    }
-    if (entries.length > 0) {
-      books.push({ name: detail.name || ref.name || "Saucepan lorebook", entries });
-    }
+    const book = await fetchLorebookById(ref.id, ref.name);
+    if (book) books.push(book);
   }
   return books;
+}
+
+async function fetchLorebookById(
+  id: string,
+  fallbackName?: string,
+): Promise<UniformLorebook | null> {
+  const detail = await withSaucepanAuth(
+    (token) =>
+      fetch(`https://saucepan.ai/api/v1/lorebooks/${id}`, {
+        headers: { accept: "application/json", authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      }),
+    async (res) => (res.ok ? ((await res.json()) as LorebookDetail) : null),
+  );
+  if (!detail) return null;
+
+  const entries: UniformEntry[] = [];
+  for (const chapter of detail.content ?? []) {
+    entries.push(
+      ...chapterToEntries(
+        String(chapter?.title ?? "").trim() || "Lore",
+        String(chapter?.text ?? ""),
+        entries.length,
+      ),
+    );
+  }
+  if (entries.length === 0) return null;
+  return { name: detail.name || fallbackName || "Saucepan lorebook", entries };
 }
 
 export async function fetchSaucepan(url: URL): Promise<ImportResult> {
