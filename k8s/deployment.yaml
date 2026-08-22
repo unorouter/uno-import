@@ -90,7 +90,7 @@ spec:
         - name: api
           # pinned by build-local.sh; ArgoCD rolls it out. Never :latest, a
           # floating tag never changes the manifest so no deploy happens.
-          image: ghcr.io/unorouter/uno-import:49378224958559a8a82121e5628a6f26247314ba
+          image: ghcr.io/unorouter/uno-import:6a02621f1a3c44c00b346e12805e6d28e65f42ea
           env:
             - name: API_TOKEN
               valueFrom:
