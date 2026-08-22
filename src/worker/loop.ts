@@ -3,6 +3,7 @@ import * as datacat from "../adapters/datacat";
 import * as png from "../adapters/png-sources";
 import { fetchChubLorebook, matchesChubLorebook } from "../adapters/chub-lorebook";
 import { fetchRisu, matchesRisu } from "../adapters/risurealm";
+import { fetchSaucepan, matchesSaucepan } from "../adapters/saucepan";
 import { fetchLorebook, matchesLorebook, recoverLorebooks } from "../adapters/janitorai";
 import { toEntries } from "../adapters/entries";
 import type { ImportResult } from "../types/uniform-card";
@@ -40,6 +41,7 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
   if (matchesChubLorebook(url)) return fetchChubLorebook(page!, url, toEntries);
   if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (matchesRisu(url)) return fetchRisu(page!, url, toEntries);
+  if (matchesSaucepan(url)) return fetchSaucepan(page!, url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
   const { card, retryIds } = await datacat.fetchCard(page!, url);
