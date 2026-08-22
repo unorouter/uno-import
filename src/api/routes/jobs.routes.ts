@@ -6,7 +6,7 @@ import { workerReady } from "../../worker/loop";
 const MAX_IN_FLIGHT_PER_USER = 3;
 
 const SUPPORTED =
-  /(^|\.)(datacat\.run|janitorai\.com|janitor\.ai|jannyai\.com|chub\.ai|characterhub\.org|realm\.risuai\.net|lorebary\.com)$/i;
+  /(^|\.)(datacat\.run|janitorai\.com|janitor\.ai|jannyai\.com|chub\.ai|characterhub\.org|realm\.risuai\.net|lorebary\.com|saucepan\.ai)$/i;
 
 export const jobsRoutes = new Elysia()
   .post(
