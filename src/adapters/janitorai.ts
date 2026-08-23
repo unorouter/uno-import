@@ -36,10 +36,11 @@ type Recovered = {
 };
 
 const SCRIPT_URL_RE =
-  /\/(?:hampter\/)?script\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
+  /\/(?:hampter\/)?scripts?\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
 
 // A lorebook shared on its own, rather than one attached to a character. The
-// page URL and the API path carry the same id, so both forms work.
+// page URL is /scripts/{id} and the API path is /hampter/script/{id}, so the
+// singular is optional: a link someone copies from the site is the plural one.
 export const lorebookId = (input: string) =>
   SCRIPT_URL_RE.exec(input)?.[1]?.toLowerCase() ?? null;
 
