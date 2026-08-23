@@ -82,6 +82,16 @@ export type ImportResult =
       personas: UniformPersona[];
     }
   | {
+      // A JanitorAI "advanced" script: JavaScript that rebuilds the character's
+      // personality and scenario every turn, rather than a stored entry list.
+      // There is nothing to convert into lorebook rows, so the source travels
+      // through verbatim and runs in unorouter's plugin sandbox.
+      kind: "plugin";
+      source: string;
+      sourceUrl: string;
+      plugin: { name: string; script: string };
+    }
+  | {
       // A character that also ships lorebooks, scripts and assets. RisuRealm is
       // the only source that publishes all of it together; its actual "module"
       // format has zero published items, so this is what that support turned

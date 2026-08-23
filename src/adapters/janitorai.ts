@@ -1,5 +1,5 @@
 import type { PageWithCursor } from "puppeteer-real-browser";
-import type { UniformCard } from "../types/uniform-card";
+import type { ImportResult, UniformCard } from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
 
 // datacat lists every lorebook attached to a character but stores `script: null`
@@ -52,27 +52,32 @@ export const matchesLorebook = (url: URL) =>
   lorebookId(url.pathname) !== null;
 
 // Returns a card-shaped result carrying only lorebooks, so one job type and one
-// response shape serve both imports.
+// response shape serve both imports. An "advanced" script comes back as a
+// plugin instead, since its entries only exist once the code has run.
 export async function fetchLorebook(
   page: PageWithCursor,
   url: URL,
   toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
-): Promise<UniformCard> {
+): Promise<ImportResult> {
   const id = lorebookId(url.pathname);
   if (!id) throw new Error("janitorai: no lorebook id in url");
 
   const rows = await fetchScripts(page, [id]);
   const row = rows[0];
 
-  // A public "advanced" book answers 200 with a full payload, so treating an
-  // empty parse as a 404 blamed the author for a format we do not read.
-  if (row?.status === 200 && row.type && row.type !== "lorebook") {
-    throw new Error(
-      `janitorai: this is an "${row.type}" script, which builds its entries in code rather than storing them`,
-    );
-  }
   if (row && row.status !== 200) {
     throw new Error("janitorai: lorebook is private or no longer exists");
+  }
+  if (row?.status === 200 && row.type && row.type !== "lorebook") {
+    if (!row.script) {
+      throw new Error("janitorai: script is empty");
+    }
+    return {
+      kind: "plugin",
+      source: "janitorai",
+      sourceUrl: url.href,
+      plugin: { name: row.title || "Imported script", script: row.script },
+    };
   }
 
   const books = toBooks(rows, toEntries);

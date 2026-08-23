@@ -43,7 +43,7 @@ const JOB_DEADLINE_MS = 10 * 60_000;
 const ROLLS_PER_ATTEMPT = 3;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
-const PERMANENT = /^janitorai: (this is an|lorebook has no importable)/;
+const PERMANENT = /^janitorai: (lorebook has no importable|script is empty)/;
 
 let page: PageWithCursor | null = null;
 let ready = false;
