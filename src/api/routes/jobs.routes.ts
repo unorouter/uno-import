@@ -49,9 +49,12 @@ export const jobsRoutes = new Elysia()
       if (!job) return status(404, { error: "not found" });
       return {
         status: job.status as string,
-        // The card is documented as an open object rather than the full
-        // UniformCard: same reason as above, a cross-module type reference
-        // silently costs the route its schema. The shape is in uniform-card.ts.
+        // Open object rather than ImportResult, because tsc emits a
+        // cross-module type as `import("./types/uniform-card").ImportResult`
+        // and @elysiajs/openapi's declaration-to-JSON-Schema pass cannot follow
+        // an import(): it drops the WHOLE route from the document rather than
+        // failing, so the poll route vanishes and the generated client loses
+        // it entirely. The real shape is ImportResult in uniform-card.ts.
         result: (job.result ?? null) as Record<string, unknown> | null,
         error: job.error ?? null,
       };

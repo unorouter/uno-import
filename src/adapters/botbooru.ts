@@ -24,7 +24,8 @@ export const matchesBotbooruLorebook = (url: URL) =>
   matchesBotbooru(url) && /^\/lorebooks?\//i.test(url.pathname);
 
 const idFromPath = (url: URL): string | null =>
-  /(\d+)/.exec(url.pathname.split("/").filter(Boolean).pop() ?? "")?.[1] ?? null;
+  /(\d+)/.exec(url.pathname.split("/").filter(Boolean).pop() ?? "")?.[1] ??
+  null;
 
 const TIMEOUT_MS = 20_000;
 

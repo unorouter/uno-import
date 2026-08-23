@@ -100,7 +100,11 @@ export type ImportResult =
       source: string;
       sourceUrl: string;
       avatar?: UniformAsset;
-      card: { spec: string; spec_version?: string; data: Record<string, unknown> };
+      card: {
+        spec: string;
+        spec_version?: string;
+        data: Record<string, unknown>;
+      };
       lorebooks: UniformLorebook[];
       // RisuAI shapes, passed through untouched: unorouter already stores these
       // on a character and has parsers for both.

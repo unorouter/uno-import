@@ -53,7 +53,8 @@ async function fetchPngCard(
   const out = (await page.evaluate(
     `${FETCH_PNG_IN_PAGE}(${JSON.stringify(pngUrl)})`,
   )) as { error?: string; b64?: string };
-  if (out?.error || !out?.b64) throw new Error(`${source}: ${out?.error ?? "empty"}`);
+  if (out?.error || !out?.b64)
+    throw new Error(`${source}: ${out?.error ?? "empty"}`);
 
   const card = cardFromPng(Buffer.from(out.b64, "base64"));
   return {

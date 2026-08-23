@@ -59,7 +59,10 @@ function assemble(block: FragmentBlock | undefined): string {
   const mask = Number(block.mask) || 0;
   return block.fragments
     .map((f) => ({ f, order: (Number(f.key) ^ mask) >>> 0 }))
-    .filter(({ f, order }) => proofOf(mask, order, String(f.text)) === Number(f.proof))
+    .filter(
+      ({ f, order }) =>
+        proofOf(mask, order, String(f.text)) === Number(f.proof),
+    )
     .sort((a, b) => a.order - b.order)
     .map(({ f }) => String(f.text))
     .join("");
@@ -86,7 +89,11 @@ const TIMEOUT_MS = 20_000;
 const SECTION_RE = /^>\s*(.+)$/gm;
 const KEYS_RE = /^-#\s*keys:\s*(.+)$/im;
 
-function chapterToEntries(title: string, text: string, from: number): UniformEntry[] {
+function chapterToEntries(
+  title: string,
+  text: string,
+  from: number,
+): UniformEntry[] {
   const bounds: Array<{ heading: string; start: number; end: number }> = [];
   for (const m of text.matchAll(SECTION_RE)) {
     const start = m.index ?? 0;
@@ -159,7 +166,10 @@ export async function fetchSaucepanLorebook(url: URL): Promise<ImportResult> {
 }
 
 type LorebookRef = { id?: string; name?: string };
-type LorebookDetail = { name?: string; content?: Array<{ title?: string; text?: string }> };
+type LorebookDetail = {
+  name?: string;
+  content?: Array<{ title?: string; text?: string }>;
+};
 
 // Entries are served only to a signed-in caller, so this runs solely when
 // credentials are configured; without them the books stay reported as skipped.
@@ -167,7 +177,10 @@ async function fetchLorebooks(companionId: string): Promise<UniformLorebook[]> {
   const list = await withSaucepanAuth(
     (token) =>
       fetch(`https://saucepan.ai/api/v2/companions/${companionId}/lorebooks`, {
-        headers: { accept: "application/json", authorization: `Bearer ${token}` },
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+        },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       }),
     async (res) => {
@@ -193,7 +206,10 @@ async function fetchLorebookById(
   const detail = await withSaucepanAuth(
     (token) =>
       fetch(`https://saucepan.ai/api/v1/lorebooks/${id}`, {
-        headers: { accept: "application/json", authorization: `Bearer ${token}` },
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+        },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       }),
     async (res) => (res.ok ? ((await res.json()) as LorebookDetail) : null),
@@ -283,7 +299,9 @@ export async function fetchSaucepan(url: URL): Promise<ImportResult> {
         mes_example: "",
         creator: String(c.author_handle || ""),
         creator_notes: String(c.short_description || ""),
-        tags: (c.tags ?? []).map((t) => (typeof t === "string" ? t : String(t?.name ?? ""))),
+        tags: (c.tags ?? []).map((t) =>
+          typeof t === "string" ? t : String(t?.name ?? ""),
+        ),
         character_version: "",
         system_prompt: "",
         post_history_instructions: "",

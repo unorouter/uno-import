@@ -94,7 +94,8 @@ export async function fetchRisu(
     "https://realm.risuai.net/",
     `${FETCH_IN_PAGE}(${JSON.stringify(id)}, ${MAX_ASSETS})`,
   );
-  if (out?.error || !out?.card) throw new Error(`risu: ${out?.error ?? "empty"}`);
+  if (out?.error || !out?.card)
+    throw new Error(`risu: ${out?.error ?? "empty"}`);
 
   const data = out.card.data ?? {};
   const lorebooks: UniformLorebook[] = [];
@@ -102,7 +103,10 @@ export async function fetchRisu(
   if (book?.entries?.length) {
     const entries = toEntries(JSON.stringify(book.entries));
     if (entries.length > 0) {
-      lorebooks.push({ name: book.name || `${data.name ?? "risu"} lorebook`, entries });
+      lorebooks.push({
+        name: book.name || `${data.name ?? "risu"} lorebook`,
+        entries,
+      });
     }
   }
 
