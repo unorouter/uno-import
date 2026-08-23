@@ -1,7 +1,10 @@
 import { connect, type PageWithCursor } from "puppeteer-real-browser";
 import * as datacat from "../adapters/datacat";
 import * as png from "../adapters/png-sources";
-import { fetchChubLorebook, matchesChubLorebook } from "../adapters/chub-lorebook";
+import {
+  fetchChubLorebook,
+  matchesChubLorebook,
+} from "../adapters/chub-lorebook";
 import { fetchRisu, matchesRisu } from "../adapters/risurealm";
 import {
   fetchBotbooru,
@@ -19,7 +22,11 @@ import {
   matchesSaucepan,
   matchesSaucepanLorebook,
 } from "../adapters/saucepan";
-import { fetchLorebook, matchesLorebook, recoverLorebooks } from "../adapters/janitorai";
+import {
+  fetchLorebook,
+  matchesLorebook,
+  recoverLorebooks,
+} from "../adapters/janitorai";
 import { toEntries } from "../adapters/entries";
 import type { ImportResult } from "../types/uniform-card";
 import {
@@ -118,7 +125,9 @@ export async function startWorker() {
   // itself unhealthy the whole time. Jobs roll on demand instead.
   ready = await probeExit(page);
   if (!ready)
-    console.warn("[worker] startup exit is challenged; jobs will roll on demand");
+    console.warn(
+      "[worker] startup exit is challenged; jobs will roll on demand",
+    );
 
   setInterval(() => queue.sweep(), 60_000);
 

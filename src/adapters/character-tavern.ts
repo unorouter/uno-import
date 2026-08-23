@@ -85,13 +85,17 @@ export async function fetchCharacterTavern(url: URL): Promise<ImportResult> {
       spec_version: "2.0",
       data: {
         name,
-        description: String(card.definition_character_description ?? card.description ?? ""),
+        description: String(
+          card.definition_character_description ?? card.description ?? "",
+        ),
         personality: String(card.definition_personality ?? ""),
         scenario: String(card.definition_scenario ?? ""),
         first_mes: String(card.definition_first_message ?? ""),
         mes_example: String(card.definition_example_messages ?? ""),
         system_prompt: String(card.definition_system_prompt ?? ""),
-        post_history_instructions: String(card.definition_post_history_prompt ?? ""),
+        post_history_instructions: String(
+          card.definition_post_history_prompt ?? "",
+        ),
         creator: String(card.author ?? path.author),
         creator_notes: String(card.tagline ?? ""),
         alternate_greetings: [],

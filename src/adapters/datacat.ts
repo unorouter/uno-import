@@ -100,7 +100,11 @@ export async function fetchCard(
     card?: unknown;
     scripts?: Script[];
     avatar?: { name: string; mimeType: string; base64: string } | null;
-  }>(page, "https://datacat.run/fresh", `${FETCH_IN_PAGE}(${JSON.stringify(id)})`);
+  }>(
+    page,
+    "https://datacat.run/fresh",
+    `${FETCH_IN_PAGE}(${JSON.stringify(id)})`,
+  );
   // Report WHERE the failure happened. A 404 from identify means the evaluate
   // ran somewhere other than datacat's origin, which is a different bug from
   // datacat rejecting us, and the two are indistinguishable without this.

@@ -66,7 +66,9 @@ spec:
                 { secretKeyRef: { name: uno-import-env, key: OPENVPN_USER } }
             - name: OPENVPN_PASSWORD
               valueFrom:
-                { secretKeyRef: { name: uno-import-env, key: OPENVPN_PASSWORD } }
+                {
+                  secretKeyRef: { name: uno-import-env, key: OPENVPN_PASSWORD },
+                }
             - name: HTTP_CONTROL_SERVER_ADDRESS
               value: ":8000"
             # The kill-switch drops everything not bound for the tunnel, and that
@@ -118,7 +120,8 @@ spec:
           # DeploymentNoReplicas.
           readinessProbe:
             exec:
-              command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
+              command:
+                ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
             timeoutSeconds: 8
             periodSeconds: 15
             failureThreshold: 3
@@ -127,13 +130,15 @@ spec:
           # success, so that search cannot register as an outage or get killed halfway.
           startupProbe:
             exec:
-              command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
+              command:
+                ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
             timeoutSeconds: 8
             periodSeconds: 15
-            failureThreshold: 40   # up to 10min of rerolling
+            failureThreshold: 40 # up to 10min of rerolling
           livenessProbe:
             exec:
-              command: ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
+              command:
+                ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
             timeoutSeconds: 8
             periodSeconds: 60
             failureThreshold: 5

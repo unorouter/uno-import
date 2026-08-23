@@ -31,7 +31,8 @@ async function login(): Promise<string> {
 // Single-flight: several lorebooks on one card would otherwise each open their
 // own login while the first was still running.
 export async function saucepanToken(force = false): Promise<string> {
-  if (!hasSaucepanAuth()) throw new Error("saucepan: no credentials configured");
+  if (!hasSaucepanAuth())
+    throw new Error("saucepan: no credentials configured");
   if (!force && cached) return cached;
   if (force) cached = null;
   if (!inFlight) {
