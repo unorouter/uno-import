@@ -41,6 +41,9 @@ const JOB_DEADLINE_MS = 10 * 60_000;
 // worth trying the actual request on rather than spending the budget proving
 // exits good with the probe.
 const ROLLS_PER_ATTEMPT = 3;
+// Failures that are the upstream's answer rather than the exit's, so a reroll
+// cannot change them.
+const PERMANENT = /^janitorai: (this is an|lorebook has no importable)/;
 
 let page: PageWithCursor | null = null;
 let ready = false;
@@ -149,7 +152,11 @@ export async function startWorker() {
         // exit, and rerolling one would burn the whole deadline on a card that
         // is simply not there.
         const direct = /^(saucepan|botbooru|character-tavern):/.test(lastError);
-        if (Date.now() > deadline || direct) {
+        // A verdict the upstream gave us at HTTP 200 does not change on a
+        // fresh exit, so rerolling one only delays the same answer to the
+        // deadline.
+        const settled = PERMANENT.test(lastError);
+        if (Date.now() > deadline || direct || settled) {
           queue.fail(job, lastError);
           break;
         }
