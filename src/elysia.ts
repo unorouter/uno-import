@@ -10,13 +10,18 @@ if (!TOKEN) throw new Error("API_TOKEN is required");
 export const app = new Elysia()
   // Response schemas are derived from the handlers' own return types, so the
   // document cannot drift from the code. fromTypes reads an EMITTED
-  // declaration, not the source: pointing it at src/ logs "Couldn't find
-  // generated declaration file" and silently produces paths with no response
-  // bodies, which looks like it worked. `bun run build` writes it.
+  // declaration in production and the SOURCE in dev; a path that does not
+  // exist yields paths with no response bodies rather than an error, which
+  // looks like it worked until a generated client comes out as `unknown`.
+  // The image runs `bun run build` to write dist/elysia.d.ts.
   .use(
     openapi({
       documentation: { openapi: "3.1.0" },
-      references: fromTypes("dist/elysia.d.ts"),
+      references: fromTypes(
+        process.env.NODE_ENV === "production"
+          ? "dist/elysia.d.ts"
+          : "src/elysia.ts",
+      ),
     }),
   )
   // Only unorouter submits work. Without this the service is an open browser
