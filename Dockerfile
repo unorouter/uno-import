@@ -21,6 +21,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
 
+# Declarations only (emitDeclarationOnly), so the runtime still starts from
+# src/. This exists for fromTypes: without dist/elysia.d.ts the OpenAPI document
+# ships with empty `responses`, and every generated client type is `unknown`.
+RUN bun run build
+
 ENV NODE_ENV=production
 EXPOSE 4000
 
