@@ -19,7 +19,7 @@ const FETCH_SCRIPTS_IN_PAGE = `(async (ids) => {
       const r = await fetch("/hampter/script/" + id, { headers: { accept: "application/json" } });
       if (!r.ok) { out.push({ id, status: r.status }); continue; }
       const j = await r.json();
-      out.push({ id, status: 200, title: j.title, script: j.script, settings: j.settings });
+      out.push({ id, status: 200, title: j.title, script: j.script, settings: j.settings, type: j.type });
     } catch (e) {
       out.push({ id, status: 0 });
     }
@@ -33,6 +33,9 @@ type Recovered = {
   title?: string;
   script?: string | null;
   settings?: string | null;
+  // "lorebook" is a JSON array of entries. "advanced" is a JavaScript program
+  // that builds its entries at chat time, so there is nothing to parse.
+  type?: string;
 };
 
 const SCRIPT_URL_RE =
@@ -58,11 +61,23 @@ export async function fetchLorebook(
   const id = lorebookId(url.pathname);
   if (!id) throw new Error("janitorai: no lorebook id in url");
 
-  const books = await recoverLorebooks(page, [id], toEntries);
-  if (books.length === 0) {
-    // The author kept the code private, or deleted it. Both answer the same way
-    // and neither is recoverable, so say which rather than returning nothing.
+  const rows = await fetchScripts(page, [id]);
+  const row = rows[0];
+
+  // A public "advanced" book answers 200 with a full payload, so treating an
+  // empty parse as a 404 blamed the author for a format we do not read.
+  if (row?.status === 200 && row.type && row.type !== "lorebook") {
+    throw new Error(
+      `janitorai: this is an "${row.type}" script, which builds its entries in code rather than storing them`,
+    );
+  }
+  if (row && row.status !== 200) {
     throw new Error("janitorai: lorebook is private or no longer exists");
+  }
+
+  const books = toBooks(rows, toEntries);
+  if (books.length === 0) {
+    throw new Error("janitorai: lorebook has no importable entries");
   }
   return {
     source: "janitorai",
@@ -73,19 +88,32 @@ export async function fetchLorebook(
   };
 }
 
+async function fetchScripts(
+  page: PageWithCursor,
+  scriptIds: string[],
+): Promise<Recovered[]> {
+  if (scriptIds.length === 0) return [];
+  return (
+    (await evaluateOn<Recovered[]>(
+      page,
+      "https://janitorai.com/",
+      `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
+    )) ?? []
+  );
+}
+
 export async function recoverLorebooks(
   page: PageWithCursor,
   scriptIds: string[],
   toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
 ): Promise<UniformCard["lorebooks"]> {
-  if (scriptIds.length === 0) return [];
+  return toBooks(await fetchScripts(page, scriptIds), toEntries);
+}
 
-  const rows = await evaluateOn<Recovered[]>(
-    page,
-    "https://janitorai.com/",
-    `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
-  );
-
+function toBooks(
+  rows: Recovered[],
+  toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
+): UniformCard["lorebooks"] {
   const out: UniformCard["lorebooks"] = [];
   for (const r of rows ?? []) {
     if (r.status !== 200 || !r.script) continue;
