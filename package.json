@@ -10,7 +10,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@elysiajs/openapi": "1.4.15",
+    "@elysiajs/openapi": "github:unorouter/elysia-openapi-fork#fix/fromtypes-response-parsing-dist",
     "elysia": "1.4.29",
     "puppeteer-real-browser": "1.4.4"
   },
