@@ -13,6 +13,13 @@ export type UniformEntry = {
   priority: number;
   orderIndex: number;
   matchWholeWords: boolean;
+  // Both come from LoreBary plugins, which are lorebook entries carrying a
+  // trigger and an add_message action. Optional because no other source sets
+  // them: a plain lorebook entry is a system injection that always applies once
+  // its keys match.
+  injectionRole?: "system" | "user" | "assistant";
+  // Percent chance the entry fires on a turn whose keys already matched.
+  chance?: number;
 };
 
 export type UniformLorebook = {
@@ -90,6 +97,19 @@ export type ImportResult =
       source: string;
       sourceUrl: string;
       plugin: { name: string; script: string };
+    }
+  | {
+      // A published PRESET: LoreBary's prompts (an ordered block list) and its
+      // scenarios (a standing instruction block) are both this once mapped, so
+      // they share one kind rather than making the client branch on which site
+      // concept produced it. `promptTemplate` is the finished PromptItem[] JSON
+      // unorouter stores verbatim, so importing is a single row write.
+      kind: "preset";
+      source: string;
+      sourceUrl: string;
+      preset: { name: string; promptTemplate: string };
+      // A scenario can ship its own books; a prompt never does.
+      lorebooks: UniformLorebook[];
     }
   | {
       // A character that also ships lorebooks, scripts and assets. RisuRealm is

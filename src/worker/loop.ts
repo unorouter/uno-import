@@ -5,7 +5,20 @@ import {
   fetchChubLorebook,
   matchesChubLorebook,
 } from "../adapters/chub-lorebook";
-import { fetchLorebaryPersona, matchesLorebary } from "../adapters/lorebary";
+import {
+  fetchLorebaryCharacter,
+  fetchLorebaryLorebook,
+  fetchLorebaryPersona,
+  fetchLorebaryPlugin,
+  fetchLorebaryPrompt,
+  fetchLorebaryScenario,
+  matchesLorebary,
+  matchesLorebaryCharacter,
+  matchesLorebaryLorebook,
+  matchesLorebaryPlugin,
+  matchesLorebaryPrompt,
+  matchesLorebaryScenario,
+} from "../adapters/lorebary";
 import { fetchRisu, matchesRisu } from "../adapters/risurealm";
 import {
   fetchBotbooru,
@@ -50,7 +63,8 @@ const JOB_DEADLINE_MS = 10 * 60_000;
 const ROLLS_PER_ATTEMPT = 3;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
-const PERMANENT = /^janitorai: (lorebook has no importable|script is empty)/;
+const PERMANENT =
+  /^(janitorai: (lorebook has no importable|script is empty)|lorebary: (downloads disabled|.* not found|.* has no importable|scenario is empty))/;
 
 let page: PageWithCursor | null = null;
 let ready = false;
@@ -65,6 +79,13 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
   // chub /lorebooks/ before the character adapter: both live on chub.ai and only
   // the first path segment tells them apart.
   if (matchesChubLorebook(url)) return fetchChubLorebook(page!, url, toEntries);
+  // All six lorebary types share one host and differ only by path, so the
+  // specific matchers run before the persona one.
+  if (matchesLorebaryCharacter(url)) return fetchLorebaryCharacter(page!, url);
+  if (matchesLorebaryLorebook(url)) return fetchLorebaryLorebook(page!, url);
+  if (matchesLorebaryPlugin(url)) return fetchLorebaryPlugin(page!, url);
+  if (matchesLorebaryPrompt(url)) return fetchLorebaryPrompt(page!, url);
+  if (matchesLorebaryScenario(url)) return fetchLorebaryScenario(page!, url);
   if (matchesLorebary(url)) return fetchLorebaryPersona(page!, url);
   if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (matchesRisu(url)) return fetchRisu(page!, url, toEntries);
