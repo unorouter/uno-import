@@ -5,6 +5,7 @@
     "": {
       "name": "uno-import",
       "dependencies": {
+        "@elysiajs/cors": "^1.4.2",
         "@elysiajs/openapi": "github:unorouter/elysia-openapi-fork#fix/fromtypes-response-parsing-dist",
         "elysia": "1.4.29",
         "puppeteer-real-browser": "1.4.4",
@@ -18,6 +19,8 @@
   },
   "packages": {
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
+
+    "@elysiajs/cors": ["@elysiajs/cors@1.4.2", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-FTCcbH35brTLigF1W7BYySRZomgI/dBEMK9BgK9RP9Nez7zmpGh4koL/Yr1BFv8nYz7CfhRvcM8d/c+XnwMaVQ=="],
 
     "@elysiajs/openapi": ["@elysiajs/openapi@github:unorouter/elysia-openapi-fork#52b29d3", { "peerDependencies": { "@sinclair/typebox": ">= 0.34.0 < 1", "elysia": ">= 1.4.0", "typescript": ">= 5.0.0" } }, "unorouter-elysia-openapi-fork-52b29d3", "sha512-73LzAPiDU7xUffixx1WFxzwDnlf37+VHVtpV16wxIKo2lEtdlBFhOwMo0faRlUXhNkSRtkZtkeVU1hunUFhDgA=="],
 

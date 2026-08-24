@@ -8,21 +8,25 @@ const MAX_IN_FLIGHT_PER_USER = 3;
 const SUPPORTED =
   /(^|\.)(datacat\.run|janitorai\.com|janitor\.ai|jannyai\.com|chub\.ai|characterhub\.org|realm\.risuai\.net|lorebary\.com|saucepan\.ai|botbooru\.com|character-tavern\.com)$/i;
 
-// Behind cloudflared, so the socket address is the tunnel. The client is the
-// first hop of the forwarded chain, which Cloudflare sets itself; a direct
-// caller can forge it, but the only thing it buys is a share of the cap.
-function callerIp(request: Request, socketIp: string | undefined): string {
-  const cf = request.headers.get("cf-connecting-ip");
-  if (cf) return cf;
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return socketIp ?? "unknown";
+// Same chain unorouter reads (src/lib/custom-fetch.ts): Cloudflare sets
+// cf-connecting-ip, and the others cover any other hop. Behind cloudflared the
+// socket peer is the tunnel, so it is NOT a fallback: it would key every
+// caller in the cluster to one bucket. A direct caller can forge these, but
+// the only thing forging buys is a share of the cap.
+function callerIp(request: Request): string {
+  const h = request.headers;
+  return (
+    h.get("cf-connecting-ip")?.trim() ||
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    h.get("x-real-ip")?.trim() ||
+    "unknown"
+  );
 }
 
 export const jobsRoutes = new Elysia()
   .post(
     "/api/jobs",
-    ({ body, status, request, server }) => {
+    ({ body, status, request }) => {
       let url: URL;
       try {
         url = new URL(body.url);
@@ -36,7 +40,7 @@ export const jobsRoutes = new Elysia()
       }
       // Keyed on the IP rather than the body's userId: the endpoint takes no
       // token, so a caller-supplied id is a cap you opt out of by changing it.
-      const caller = callerIp(request, server?.requestIP(request)?.address);
+      const caller = callerIp(request);
       if (queue.inFlightFor(caller) >= MAX_IN_FLIGHT_PER_USER) {
         return status(429, { error: "too many jobs in flight" });
       }
