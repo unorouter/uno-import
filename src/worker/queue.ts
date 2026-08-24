@@ -21,6 +21,9 @@ const pending: string[] = [];
 
 const MAX_JOBS = 500;
 const FINISHED_TTL_MS = 10 * 60_000;
+// Comfortably past the worker's own 10-minute deadline, so this only fires for
+// a job the worker will never settle (crashed mid-run, lost to a pod restart).
+const STUCK_TTL_MS = 15 * 60_000;
 
 export function submit(url: string, userId: string): Job {
   const job: Job = {
@@ -80,6 +83,17 @@ export function inFlightFor(userId: string): number {
 export function sweep() {
   const now = Date.now();
   for (const [id, job] of jobs) {
+    // A live job has no finishedAt, so the TTL below can never reclaim it: one
+    // that never settles counts against its owner's in-flight cap forever, and
+    // after three of them every further import is refused. That is not
+    // hypothetical, it is what a wedged job did to a user. Nothing legitimately
+    // outlives the worker's own deadline, so past it the job is declared dead.
+    if (!job.finishedAt && now - job.createdAt > STUCK_TTL_MS) {
+      job.status = "failed";
+      job.error = "timed out";
+      job.finishedAt = now;
+      continue;
+    }
     if (job.finishedAt && now - job.finishedAt > FINISHED_TTL_MS)
       jobs.delete(id);
   }
