@@ -64,7 +64,7 @@ const ROLLS_PER_ATTEMPT = 3;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
 const PERMANENT =
-  /^(janitorai: (lorebook has no importable|script is empty)|lorebary: (downloads disabled|.* not found|.* has no importable|scenario is empty)|datacat: not_found)/;
+  /^(janitorai: (lorebook has no importable|script is empty)|lorebary: (downloads disabled|.* not found|.* has no importable|scenario is empty))/;
 
 let page: PageWithCursor | null = null;
 let ready = false;
