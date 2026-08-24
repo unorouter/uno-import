@@ -49,7 +49,8 @@ const JOB_DEADLINE_MS = 10 * 60_000;
 const ROLLS_PER_ATTEMPT = 3;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
-const PERMANENT = /^janitorai: (lorebook has no importable|script is empty)/;
+const PERMANENT =
+  /^(janitorai: (lorebook has no importable|script is empty))/;
 
 let page: PageWithCursor | null = null;
 let ready = false;
@@ -64,6 +65,7 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
   // chub /lorebooks/ before the character adapter: both live on chub.ai and only
   // the first path segment tells them apart.
   if (matchesChubLorebook(url)) return fetchChubLorebook(page!, url, toEntries);
+  // specific matchers run before the persona one.
   if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
   if (matchesRisu(url)) return fetchRisu(page!, url, toEntries);
   if (matchesBotbooruLorebook(url)) return fetchBotbooruLorebook(url);
