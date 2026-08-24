@@ -8,10 +8,21 @@ const MAX_IN_FLIGHT_PER_USER = 3;
 const SUPPORTED =
   /(^|\.)(datacat\.run|janitorai\.com|janitor\.ai|jannyai\.com|chub\.ai|characterhub\.org|realm\.risuai\.net|lorebary\.com|saucepan\.ai|botbooru\.com|character-tavern\.com)$/i;
 
+// Behind cloudflared, so the socket address is the tunnel. The client is the
+// first hop of the forwarded chain, which Cloudflare sets itself; a direct
+// caller can forge it, but the only thing it buys is a share of the cap.
+function callerIp(request: Request, socketIp: string | undefined): string {
+  const cf = request.headers.get("cf-connecting-ip");
+  if (cf) return cf;
+  const fwd = request.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return socketIp ?? "unknown";
+}
+
 export const jobsRoutes = new Elysia()
   .post(
     "/api/jobs",
-    ({ body, status }) => {
+    ({ body, status, request, server }) => {
       let url: URL;
       try {
         url = new URL(body.url);
@@ -23,12 +34,13 @@ export const jobsRoutes = new Elysia()
       if (!SUPPORTED.test(url.hostname)) {
         return status(400, { error: "unsupported source" });
       }
-      // Per-user concurrency, not a lifetime quota: one caller should not be
-      // able to fill a single-browser queue on everyone else's behalf.
-      if (queue.inFlightFor(body.userId) >= MAX_IN_FLIGHT_PER_USER) {
+      // Keyed on the IP rather than the body's userId: the endpoint takes no
+      // token, so a caller-supplied id is a cap you opt out of by changing it.
+      const caller = callerIp(request, server?.requestIP(request)?.address);
+      if (queue.inFlightFor(caller) >= MAX_IN_FLIGHT_PER_USER) {
         return status(429, { error: "too many jobs in flight" });
       }
-      const job = queue.submit(url.href, body.userId);
+      const job = queue.submit(url.href, caller);
       // Widened to string on purpose: fromTypes resolves the response off the
       // emitted declaration, and a type imported from another module comes
       // through as an unresolved reference, which drops the whole route's
@@ -36,9 +48,11 @@ export const jobsRoutes = new Elysia()
       return { jobId: job.id, status: job.status as string };
     },
     {
+      // userId is accepted and ignored: the cap moved to the client IP, and
+      // rejecting it would break unorouter's generated client mid-rollout.
       body: t.Object({
         url: t.String({ minLength: 1, maxLength: 2048 }),
-        userId: t.String({ minLength: 1, maxLength: 64 }),
+        userId: t.Optional(t.String({ maxLength: 64 })),
       }),
     },
   )
