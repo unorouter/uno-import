@@ -97,6 +97,10 @@ spec:
             - name: API_TOKEN
               valueFrom:
                 { secretKeyRef: { name: uno-import-env, key: API_TOKEN } }
+            # Which origins may read a response from a browser. Not a secret and
+            # not access control: the import endpoints take no token.
+            - name: CORS_ORIGINS
+              value: "http://localhost:3000,https://unorouter.com,https://www.unorouter.com"
           envFrom:
             - secretRef: { name: uno-import-env }
           ports:

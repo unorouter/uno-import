@@ -1,3 +1,4 @@
+import { cors } from "@elysiajs/cors";
 import { fromTypes, openapi } from "@elysiajs/openapi";
 import { Elysia } from "elysia";
 import { debugRoutes } from "./api/routes/debug.routes";
@@ -11,18 +12,22 @@ if (!TOKEN) throw new Error("API_TOKEN is required");
 // going through unorouter's BFF. This is NOT access control (a non-browser
 // caller sends whatever Origin it likes, and the endpoints are open anyway);
 // it only tells real browsers they are allowed to read the response.
-const ALLOWED_ORIGIN =
-  /^https?:\/\/(localhost:3000|([a-z0-9-]+\.)*unorouter\.com)$/i;
+//
+// Comma-separated exact origins, or "*" for any. Cheaper to widen here than to
+// ship an image when a new front-end host appears.
+const ALLOWED_ORIGINS = (
+  process.env.CORS_ORIGINS ?? "http://localhost:3000,https://unorouter.com"
+)
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-function corsHeaders(origin: string | null): Record<string, string> {
-  if (!origin || !ALLOWED_ORIGIN.test(origin)) return {};
-  return {
-    "access-control-allow-origin": origin,
-    "access-control-allow-headers": "content-type",
-    "access-control-max-age": "86400",
-    vary: "Origin",
-  };
-}
+const corsOrigin = ALLOWED_ORIGINS.includes("*")
+  ? true
+  : (request: Request) => {
+      const origin = request.headers.get("origin");
+      return !!origin && ALLOWED_ORIGINS.includes(origin);
+    };
 
 export const app = new Elysia()
   // Response schemas are derived from the handlers' own return types, so the
@@ -41,21 +46,20 @@ export const app = new Elysia()
       ),
     }),
   )
+  // credentials off: these endpoints carry no cookie and no token, and allowing
+  // them would be the one CORS setting that actually widens what a page can do.
+  .use(
+    cors({
+      origin: corsOrigin,
+      allowedHeaders: ["content-type"],
+      credentials: false,
+      exposeHeaders: [],
+    }),
+  )
   // The import endpoints are open: the fetch target is whitelisted to a fixed
   // list of card sites, so this cannot be pointed at the wider web, and a
   // per-IP concurrency cap keeps one caller off the single browser. Everything
   // else still needs the token, since the debug surface is not for the public.
-  .onAfterHandle(({ request, set }) => {
-    Object.assign(set.headers, corsHeaders(request.headers.get("origin")));
-  })
-  .options("/api/jobs", ({ request, set }) => {
-    Object.assign(set.headers, corsHeaders(request.headers.get("origin")));
-    return new Response(null, { status: 204 });
-  })
-  .options("/api/jobs/:id", ({ request, set }) => {
-    Object.assign(set.headers, corsHeaders(request.headers.get("origin")));
-    return new Response(null, { status: 204 });
-  })
   .onBeforeHandle(({ request, path, status }) => {
     if (path === "/api/health") return;
     if (path === "/api/jobs" || path.startsWith("/api/jobs/")) return;
