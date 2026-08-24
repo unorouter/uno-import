@@ -5,7 +5,10 @@ export type JobStatus = "queued" | "running" | "done" | "failed";
 export type Job = {
   id: string;
   url: string;
-  userId: string;
+  // Whoever submitted, for the concurrency cap alone. The client IP now, since
+  // the endpoint is callable without a token and a body field would be a cap
+  // anyone could opt out of by varying it.
+  caller: string;
   status: JobStatus;
   createdAt: number;
   finishedAt?: number;
@@ -25,11 +28,11 @@ const FINISHED_TTL_MS = 10 * 60_000;
 // a job the worker will never settle (crashed mid-run, lost to a pod restart).
 const STUCK_TTL_MS = 15 * 60_000;
 
-export function submit(url: string, userId: string): Job {
+export function submit(url: string, caller: string): Job {
   const job: Job = {
     id: crypto.randomUUID(),
     url,
-    userId,
+    caller,
     status: "queued",
     createdAt: Date.now(),
   };
@@ -65,12 +68,14 @@ export function fail(job: Job, error: string) {
 }
 
 // One caller may not fill the queue on everyone else's behalf. Counted over
-// live jobs only, so it throttles concurrency rather than lifetime usage.
-export function inFlightFor(userId: string): number {
+// live jobs only, so it throttles concurrency rather than lifetime usage. The
+// worker runs ONE browser page serially, so an uncapped caller does not slow
+// imports down, it stops them for everyone until its jobs drain.
+export function inFlightFor(caller: string): number {
   let n = 0;
   for (const j of jobs.values()) {
     if (
-      j.userId === userId &&
+      j.caller === caller &&
       (j.status === "queued" || j.status === "running")
     )
       n++;
