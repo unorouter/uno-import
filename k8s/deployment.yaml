@@ -112,7 +112,11 @@ spec:
               mountPath: /dev/shm
           resources:
             requests: { memory: 512Mi, cpu: 200m }
-            limits: { memory: 2Gi }
+            # Chrome grows with every page load a job makes, and a job that
+            # retries is many loads. 2Gi was reached and OOM-killed the API
+            # mid-import, which drops the queue and reads to the user as the
+            # service being down.
+            limits: { memory: 3Gi }
           # exec, not httpGet: the kubelet probes the POD IP, and replies to it
           # route back out through the tunnel and never arrive, so an httpGet
           # probe times out against a server that answers fine on localhost. The

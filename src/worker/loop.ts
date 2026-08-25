@@ -48,6 +48,7 @@ import {
   gracefulShutdown,
   probeExit,
   registerBrowserForShutdown,
+  rotateVpn,
 } from "./page-tools";
 import * as queue from "./queue";
 
@@ -61,6 +62,10 @@ const JOB_DEADLINE_MS = 10 * 60_000;
 // worth trying the actual request on rather than spending the budget proving
 // exits good with the probe.
 const ROLLS_PER_ATTEMPT = 3;
+// A ceiling on top of the deadline. The deadline alone does not bound WORK: a
+// fast-failing target burns hundreds of Chrome page loads inside it, and that
+// is what exhausts the container's memory rather than its time.
+const MAX_ATTEMPTS = 12;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
 const PERMANENT =
@@ -191,9 +196,23 @@ export async function startWorker() {
           break;
         }
         console.warn(`[job] attempt ${attempt} failed: ${lastError}`);
+        // Every attempt loads pages in a real Chrome, so an unbounded retry is
+        // a memory leak with a deadline: one job spent 200+ attempts against an
+        // exit the probe kept calling healthy and OOM-killed the container.
+        if (attempt >= MAX_ATTEMPTS) {
+          queue.fail(job, lastError);
+          break;
+        }
         // A challenged exit surfaces as a fetch failure from in-page code, so
-        // treat any failure as possibly-the-exit and move to a fresh one.
+        // treat any failure as possibly-the-exit and move to a fresh one. The
+        // probe only proves the exit can reach the open web, NOT that the
+        // target still accepts it, so a passing probe must not mean "keep this
+        // one": that is what pinned the loop to one rejected address.
         await findUsableExit(page!, ROLLS_PER_ATTEMPT);
+        // Force a move regardless of the probe's verdict: the target rejecting
+        // us is invisible to it, and staying put makes every further attempt
+        // ask the same address the same question.
+        await rotateVpn();
       }
     }
   }
