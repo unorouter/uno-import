@@ -203,16 +203,14 @@ export async function startWorker() {
           queue.fail(job, lastError);
           break;
         }
-        // A challenged exit surfaces as a fetch failure from in-page code, so
-        // treat any failure as possibly-the-exit and move to a fresh one. The
-        // probe only proves the exit can reach the open web, NOT that the
-        // target still accepts it, so a passing probe must not mean "keep this
-        // one": that is what pinned the loop to one rejected address.
-        await findUsableExit(page!, ROLLS_PER_ATTEMPT);
-        // Force a move regardless of the probe's verdict: the target rejecting
-        // us is invisible to it, and staying put makes every further attempt
-        // ask the same address the same question.
+        // Move FIRST, then find a usable exit. The probe only proves the exit
+        // can reach the open web, not that the TARGET still accepts it, so
+        // leaving on a passing probe pinned the loop to one rejected address
+        // for 200+ attempts. Rotating AFTER the search is worse still: it
+        // discards the exit just validated and runs the next attempt while the
+        // tunnel is still coming up.
         await rotateVpn();
+        await findUsableExit(page!, ROLLS_PER_ATTEMPT);
       }
     }
   }
