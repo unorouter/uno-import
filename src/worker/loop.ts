@@ -57,21 +57,27 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // How long one job may keep trying. Generous, because the alternative is
 // failing a request that a few more rolls would have served, and the client is
 // polling rather than holding a connection open.
-const JOB_DEADLINE_MS = 10 * 60_000;
+const JOB_DEADLINE_MS = 15 * 60_000;
 // Rolls per failure before re-attempting the fetch. Small: a fresh exit is
 // worth trying the actual request on rather than spending the budget proving
 // exits good with the probe.
 const ROLLS_PER_ATTEMPT = 3;
-// A ceiling on top of the deadline. The deadline alone does not bound WORK: a
-// fast-failing target burns hundreds of Chrome page loads inside it, and that
-// is what exhausts the container's memory rather than its time.
-const MAX_ATTEMPTS = 12;
+// The exit pool is large and a rejected exit is not a rejected card, so the
+// deadline is the ONLY thing that ends a job: capping attempts throws away a
+// pool that would have served the request a few rolls later.
+//
+// What the deadline does not bound is MEMORY. Each attempt loads pages in a
+// real Chrome and the tab never gives that back, which is how one job reached
+// 1.1GB and OOM-killed the container. Replacing the tab periodically returns
+// it, so a long retry costs time instead of the process.
+const ATTEMPTS_PER_PAGE = 8;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
 const PERMANENT =
   /^(janitorai: (lorebook has no importable|script is empty)|lorebary: (downloads disabled|.* not found|.* has no importable|scenario is empty))/;
 
 let page: PageWithCursor | null = null;
+let newPage: (() => Promise<PageWithCursor>) | null = null;
 let ready = false;
 
 export const workerReady = () => ready;
@@ -132,20 +138,23 @@ export async function startWorker() {
   // disney.com with a recaptcha worker while a job was mid-flight. A dedicated
   // page is not touched by that, and the startup tab is left to whatever wants
   // it.
-  page = ((await browser.newPage()) ?? p) as PageWithCursor;
-  await page.setViewport({ width: 1920, height: 1080 });
-
-  // Confirm datacat's 18+ gate before their scripts run. Its Exit button sets
-  // location to disney.com, and the turnstile solver clicks buttons on the page,
-  // so an unconfirmed overlay walks the tab off the site about a second after
-  // the load succeeds; every relative fetch then 404s from disney.de and reads
-  // like the API rejecting us. This sets the same flag Confirm would.
-  await page.evaluateOnNewDocument(`
-    try {
-      localStorage.setItem("age_gate_ok", "true");
-      sessionStorage.setItem("age_gate_ok", "true");
-    } catch (e) {}
-  `);
+  newPage = async () => {
+    const fresh = ((await browser.newPage()) ?? p) as PageWithCursor;
+    await fresh.setViewport({ width: 1920, height: 1080 });
+    // Confirm datacat's 18+ gate before their scripts run. Its Exit button sets
+    // location to disney.com, and the turnstile solver clicks buttons on the
+    // page, so an unconfirmed overlay walks the tab off the site about a second
+    // after the load succeeds; every relative fetch then 404s from disney.de and
+    // reads like the API rejecting us. This sets the same flag Confirm would.
+    await fresh.evaluateOnNewDocument(`
+      try {
+        localStorage.setItem("age_gate_ok", "true");
+        sessionStorage.setItem("age_gate_ok", "true");
+      } catch (e) {}
+    `);
+    return fresh;
+  };
+  page = await newPage();
 
   // Probe once, but do NOT roll at startup. Rotating rebuilds gluetun's
   // firewall, and inbound rules go with it, so a pod that rolls on boot is
@@ -196,12 +205,15 @@ export async function startWorker() {
           break;
         }
         console.warn(`[job] attempt ${attempt} failed: ${lastError}`);
-        // Every attempt loads pages in a real Chrome, so an unbounded retry is
-        // a memory leak with a deadline: one job spent 200+ attempts against an
-        // exit the probe kept calling healthy and OOM-killed the container.
-        if (attempt >= MAX_ATTEMPTS) {
-          queue.fail(job, lastError);
-          break;
+        // Hand the tab's memory back rather than the job's remaining time.
+        if (attempt % ATTEMPTS_PER_PAGE === 0 && newPage) {
+          try {
+            const stale = page;
+            page = await newPage();
+            await stale?.close();
+          } catch {
+            // a failed swap leaves the old tab in place, which still works
+          }
         }
         // Move FIRST, then find a usable exit. The probe only proves the exit
         // can reach the open web, not that the TARGET still accepts it, so

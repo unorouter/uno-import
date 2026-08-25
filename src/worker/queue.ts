@@ -24,9 +24,9 @@ const pending: string[] = [];
 
 const MAX_JOBS = 500;
 const FINISHED_TTL_MS = 10 * 60_000;
-// Comfortably past the worker's own 10-minute deadline, so this only fires for
+// Comfortably past the worker's own 15-minute deadline, so this only fires for
 // a job the worker will never settle (crashed mid-run, lost to a pod restart).
-const STUCK_TTL_MS = 15 * 60_000;
+const STUCK_TTL_MS = 20 * 60_000;
 
 export function submit(url: string, caller: string): Job {
   const job: Job = {
