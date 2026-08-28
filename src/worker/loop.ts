@@ -76,7 +76,7 @@ const ATTEMPTS_PER_PAGE = 8;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
 const PERMANENT =
-  /^(janitorai: (lorebook has no importable|script is empty)|lorebary: (downloads disabled|.* not found|.* has no importable|scenario is empty))/;
+  /^(datacat: character not indexed|janitorai: (lorebook has no importable|script is empty)|lorebary: (downloads disabled|.* not found|.* has no importable|scenario is empty))/;
 
 let page: PageWithCursor | null = null;
 let newPage: (() => Promise<PageWithCursor>) | null = null;

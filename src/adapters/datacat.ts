@@ -108,6 +108,16 @@ export async function fetchCard(
   // Report WHERE the failure happened. A 404 from identify means the evaluate
   // ran somewhere other than datacat's origin, which is a different bug from
   // datacat rejecting us, and the two are indistinguishable without this.
+  // The identify call proves the session reached datacat, so a 404 AFTER it is
+  // datacat's answer about this character, not a challenged exit. Verified over
+  // CDP in one session: two janitorai ids 404 on every attempt while a crawled
+  // id returns 20KB, so rerolling only spends the deadline to be told the same
+  // thing. Marked so the worker fails it immediately.
+  if (raw?.error === "not_found") {
+    throw new Error("datacat: character not indexed");
+  }
+  // Keep the page URL for the rest: a failure at identify means the evaluate ran
+  // somewhere other than datacat's origin, which is a different bug entirely.
   if (raw?.error) throw new Error(`datacat: ${raw.error} (at ${page.url()})`);
 
   const card =
