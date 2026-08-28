@@ -36,7 +36,10 @@ export const app = new Elysia()
   .use(
     cors({
       origin: corsOrigin,
-      allowedHeaders: ["content-type"],
+      // authorization is required for the echo surface: the token now gates it,
+      // and a browser client (JanitorAI's custom proxy) sends that as a header,
+      // so omitting it here fails the preflight before the request is made.
+      allowedHeaders: ["content-type", "authorization"],
       credentials: false,
       exposeHeaders: [],
     }),
