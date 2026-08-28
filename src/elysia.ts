@@ -47,7 +47,10 @@ export const app = new Elysia()
     // and a 401 on the liveness route restarts a healthy pod every period.
     if (path === "/api/health" || path === "/api/health/live") return;
     if (path === "/api/jobs" || path.startsWith("/api/jobs/")) return;
-    if (path.endsWith("/chat/completions") || path === "/v1/models") return;
+    // /chat/completions and /v1/models are NOT exempt: the echo capture records
+    // prompt text, so it is gated by API_TOKEN like everything else. A client
+    // pointed here sends that token in its own API-key field, which is the
+    // Authorization header checked below.
     if (request.headers.get("authorization") !== `Bearer ${TOKEN}`) {
       return status(401, { error: "unauthorized" });
     }
