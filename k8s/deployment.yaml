@@ -83,6 +83,21 @@ spec:
               value: "4000"
             - name: DNS_KEEP_NAMESERVER
               value: "on"
+            # gluetun's default health target is a Cloudflare address, and PIA's
+            # exits reach it unreliably: it declared itself unhealthy and cycled
+            # the tunnel 3x in 20s while the connection was fine, and separately
+            # came back up reporting an EMPTY public_ip with no egress at all,
+            # which strands every job on "navigation failed" until a manual
+            # restart. Probe a target the exits actually serve.
+            - name: HEALTH_TARGET_ADDRESS
+              value: "1.1.1.1:443"
+            # Tight, because the job loop has no way to wait this out: a stuck
+            # tunnel burns each job's whole 15-minute deadline and starves the
+            # queue behind it, so recovering in ~30s beats staying "connected".
+            - name: HEALTH_VPN_DURATION_INITIAL
+              value: "15s"
+            - name: HEALTH_SUCCESS_WAIT_DURATION
+              value: "10s"
           volumeMounts:
             - name: gluetun-auth
               mountPath: /gluetun/auth
