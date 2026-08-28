@@ -89,15 +89,22 @@ spec:
             # came back up reporting an EMPTY public_ip with no egress at all,
             # which strands every job on "navigation failed" until a manual
             # restart. Probe a target the exits actually serve.
+            # Pin the region. With no filter gluetun draws from 21k servers and
+            # picks a fresh one on every restart, and its killswitch raced that:
+            # the OUTPUT chain held an ACCEPT for the PREVIOUS server's address
+            # while OpenVPN dialed a new one, so every handshake packet was
+            # dropped by our own firewall. No "Initialization Sequence Completed"
+            # ever appeared, egress stayed dead, and public_ip read empty while
+            # the container looked healthy.
+            - name: SERVER_REGIONS
+              value: "Netherlands"
             - name: HEALTH_TARGET_ADDRESS
               value: "1.1.1.1:443"
-            # Tight, because the job loop has no way to wait this out: a stuck
-            # tunnel burns each job's whole 15-minute deadline and starves the
-            # queue behind it, so recovering in ~30s beats staying "connected".
+            # Generous on purpose: OpenVPN needs time to finish its handshake,
+            # and a short window restarts the tunnel mid-negotiation so it never
+            # completes, which is a self-inflicted outage rather than a recovery.
             - name: HEALTH_VPN_DURATION_INITIAL
-              value: "15s"
-            - name: HEALTH_SUCCESS_WAIT_DURATION
-              value: "10s"
+              value: "60s"
           volumeMounts:
             - name: gluetun-auth
               mountPath: /gluetun/auth
