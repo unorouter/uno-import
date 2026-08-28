@@ -43,7 +43,9 @@ export const app = new Elysia()
   )
 
   .onBeforeHandle(({ request, path, status }) => {
-    if (path === "/api/health") return;
+    // Both health routes are public: the kubelet probes them with no token,
+    // and a 401 on the liveness route restarts a healthy pod every period.
+    if (path === "/api/health" || path === "/api/health/live") return;
     if (path === "/api/jobs" || path.startsWith("/api/jobs/")) return;
     if (path.endsWith("/chat/completions") || path === "/v1/models") return;
     if (request.headers.get("authorization") !== `Bearer ${TOKEN}`) {
