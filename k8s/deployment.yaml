@@ -98,13 +98,6 @@ spec:
             # the container looked healthy.
             - name: SERVER_REGIONS
               value: "Netherlands"
-            # Narrow to Amsterdam as well. Across 20 servers in the NL region the
-            # 195.78.54.x block completed its handshake while 212.102.35.x and
-            # 143.244.41.x answered "TLS Error: TLS handshake failed" 16 times
-            # with no auth rejection, so the credentials are fine and those hosts
-            # are simply not serving. Without this the picker keeps drawing them.
-            - name: SERVER_CITIES
-              value: "Amsterdam"
             - name: HEALTH_TARGET_ADDRESS
               value: "1.1.1.1:443"
             # Generous on purpose: OpenVPN needs time to finish its handshake,
