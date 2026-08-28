@@ -58,6 +58,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // failing a request that a few more rolls would have served, and the client is
 // polling rather than holding a connection open.
 const JOB_DEADLINE_MS = 15 * 60_000;
+// What one job may spend while others are queued behind it.
+const BUSY_JOB_DEADLINE_MS = 90_000;
 // Rolls per failure before re-attempting the fetch. Small: a fresh exit is
 // worth trying the actual request on rather than spending the budget proving
 // exits good with the probe.
@@ -196,10 +198,14 @@ export async function startWorker() {
     // is not a measure of anything, and giving up on a working request because
     // the pool was bad for a minute is the failure users actually see.
     //
-    // A deadline is the real bound. The queue is per-user rate limited, so a
-    // long retry cannot monopolise the browser, and the caller is polling and
-    // can give up on its own.
-    const deadline = Date.now() + JOB_DEADLINE_MS;
+    // But the full deadline is only affordable when nobody is waiting. There is
+    // ONE browser, so a job that retries for fifteen minutes holds every other
+    // caller behind it, and the per-user cap does not help: the queue in front of
+    // you is other people. Jobs with company get the short deadline, which is
+    // still ~20 rolls, and the wait is reported rather than looking like a hang.
+    const alone = queue.queueDepth() === 0;
+    const deadline =
+      Date.now() + (alone ? JOB_DEADLINE_MS : BUSY_JOB_DEADLINE_MS);
     let lastError = "";
     for (let attempt = 1; ; attempt++) {
       try {
@@ -221,7 +227,15 @@ export async function startWorker() {
           // Only a job that exhausted its whole deadline counts: a permanent
           // upstream verdict (private card, 404) says nothing about egress.
           if (!direct && !settled) failStreak++;
-          queue.fail(job, lastError);
+          // Say WHICH deadline ran out. Giving up early because other callers
+          // were waiting is a queue problem the user can retry out of, and it
+          // reads nothing like the card being missing or private, so reporting
+          // the last upstream error alone sends them chasing the wrong thing.
+          const gaveUpEarly = !direct && !settled && !alone;
+          queue.fail(
+            job,
+            gaveUpEarly ? `busy: ${lastError}` : lastError,
+          );
           break;
         }
         console.warn(`[job] attempt ${attempt} failed: ${lastError}`);
