@@ -1,7 +1,11 @@
 import { Elysia, t } from "elysia";
 import { exitIp } from "../../worker/page-tools";
 import * as queue from "../../worker/queue";
-import { workerReady } from "../../worker/loop";
+import {
+  consecutiveJobFailures,
+  egressHealthy,
+  workerReady,
+} from "../../worker/loop";
 
 const MAX_IN_FLIGHT_PER_USER = 3;
 
@@ -76,9 +80,28 @@ export const jobsRoutes = new Elysia()
   // ok reports whether the API can accept work, not whether the last probe
   // passed: a challenged exit is recoverable per job, and failing readiness for
   // it takes the Service out of the cluster's endpoints for no reason.
+  // Readiness only: 200 whenever the API can accept work. A challenged exit is
+  // recoverable per job, and failing this takes the pod out of the Service so
+  // the queue stops accepting the very jobs that would prove egress works.
   .get("/api/health", async () => ({
     ok: true,
     exitUsable: workerReady(),
     exitIp: await exitIp(),
     queueDepth: queue.queueDepth(),
-  }));
+    failStreak: consecutiveJobFailures(),
+  }))
+  // Liveness only: 503 once egress is persistently dead, so the kubelet
+  // restarts the container and gluetun comes back on a fresh tunnel.
+  .get("/api/health/live", async ({ status }) => {
+    const body = {
+      ok: egressHealthy(),
+      exitUsable: workerReady(),
+      exitIp: await exitIp(),
+      queueDepth: queue.queueDepth(),
+      failStreak: consecutiveJobFailures(),
+    };
+    // 503 so the liveness probe can actually restart the pod. Reporting 200 on a
+    // dead tunnel is what let an outage run: gluetun was flapping, every job
+    // failed, and nothing ever recycled the container.
+    return body.ok ? body : status(503, body);
+  });

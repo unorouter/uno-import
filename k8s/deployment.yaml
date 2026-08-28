@@ -143,10 +143,20 @@ spec:
             timeoutSeconds: 8
             periodSeconds: 15
             failureThreshold: 40 # up to 10min of rerolling
+          # /api/health/live, NOT /api/health: readiness must stay 200 on a
+          # challenged exit (else the pod leaves the Service and stops accepting
+          # the jobs that prove egress works), while liveness has to go 503 when
+          # egress is persistently dead. With both on the readiness endpoint a
+          # real outage ran with the probe green: gluetun restarted itself 3x in
+          # 20s, 82 rerolls, 0 successful imports, and nothing recycled the pod.
           livenessProbe:
             exec:
               command:
-                ["sh", "-c", "curl -sf -m 5 http://127.0.0.1:4000/api/health"]
+                [
+                  "sh",
+                  "-c",
+                  "curl -sf -m 5 http://127.0.0.1:4000/api/health/live",
+                ]
             timeoutSeconds: 8
             periodSeconds: 60
             failureThreshold: 5

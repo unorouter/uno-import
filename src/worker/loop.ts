@@ -79,8 +79,24 @@ const PERMANENT =
 let page: PageWithCursor | null = null;
 let newPage: (() => Promise<PageWithCursor>) | null = null;
 let ready = false;
+let failStreak = 0;
 
 export const workerReady = () => ready;
+
+// A pod whose tunnel is broken still answers /api/health, so the liveness probe
+// kept passing through an outage where EVERY import failed: 82 VPN rerolls, 0
+// successes, and gluetun restarting itself three times in 20 seconds. Health has
+// to reflect egress or it cannot restart the one thing that fixes this.
+//
+// Keyed on consecutive whole-JOB failures rather than a live probe: a single
+// challenged exit is normal and recoverable per job (which is why ok was a
+// literal), but nothing legitimate fails this many jobs back to back.
+const DEAD_AFTER_CONSECUTIVE_JOB_FAILURES = 5;
+
+export const egressHealthy = () =>
+  failStreak < DEAD_AFTER_CONSECUTIVE_JOB_FAILURES;
+
+export const consecutiveJobFailures = () => failStreak;
 
 async function runJob(job: queue.Job): Promise<ImportResult> {
   const url = new URL(job.url);
@@ -188,6 +204,7 @@ export async function startWorker() {
     for (let attempt = 1; ; attempt++) {
       try {
         queue.finish(job, await runJob(job));
+        failStreak = 0;
         break;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
@@ -201,6 +218,9 @@ export async function startWorker() {
         // deadline.
         const settled = PERMANENT.test(lastError);
         if (Date.now() > deadline || direct || settled) {
+          // Only a job that exhausted its whole deadline counts: a permanent
+          // upstream verdict (private card, 404) says nothing about egress.
+          if (!direct && !settled) failStreak++;
           queue.fail(job, lastError);
           break;
         }
