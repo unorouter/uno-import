@@ -73,6 +73,9 @@ export const jobsRoutes = new Elysia()
         status: job.status as string,
         result: job.result ?? null,
         error: job.error ?? null,
+        // Zero once running, so the client can say "3 ahead of you" instead of
+        // showing a spinner that looks identical to a stuck import.
+        queuePosition: queue.positionOf(params.id),
       };
     },
     { params: t.Object({ id: t.String() }) },

@@ -44,6 +44,14 @@ export function submit(url: string, caller: string): Job {
 export const get = (id: string) => jobs.get(id);
 export const queueDepth = () => pending.length;
 
+// How many jobs are ahead of this one. A queued job is otherwise indistinguishable
+// from a hung one: the browser is single-threaded, so waiting is normal and worth
+// reporting rather than leaving the caller to guess.
+export function positionOf(id: string): number {
+  const i = pending.indexOf(id);
+  return i < 0 ? 0 : i + 1;
+}
+
 export function take(): Job | null {
   while (pending.length) {
     const job = jobs.get(pending.shift()!);
