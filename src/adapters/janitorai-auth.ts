@@ -107,6 +107,50 @@ export async function ensureJanitorLogin(
   return false;
 }
 
+// The avatar is a bare filename on the character row, and the bytes live on a
+// different host. Fetched in the page so the request carries the same clearance
+// as everything else here, and base64 because binary cannot cross page.evaluate.
+async function fetchAvatar(
+  page: PageWithCursor,
+  avatar: string,
+): Promise<{ name: string; mimeType: string; base64: string } | undefined> {
+  if (!avatar) return undefined;
+  try {
+    const got: unknown = await page.evaluate(`(async () => {
+      const a = ${JSON.stringify(avatar)};
+      const src = /^https?:/.test(a)
+        ? a
+        : "https://ella.janitorai.com/bot-avatars/" + a;
+      try {
+        const r = await fetch(src);
+        if (!r.ok) return null;
+        const buf = new Uint8Array(await r.arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < buf.length; i += 8192) {
+          bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
+        }
+        return JSON.stringify({
+          name: "avatar",
+          mimeType: r.headers.get("content-type") || "image/webp",
+          base64: btoa(bin),
+        });
+      } catch (e) { return null; }
+    })()`);
+    if (typeof got !== "string") return undefined;
+    const parsed: unknown = JSON.parse(got);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { base64?: unknown }).base64 === "string"
+    ) {
+      return parsed as { name: string; mimeType: string; base64: string };
+    }
+  } catch {
+    // an avatar is not worth failing the import over
+  }
+  return undefined;
+}
+
 type JanitorMeta = {
   name?: string;
   description?: string;
@@ -118,6 +162,7 @@ type JanitorMeta = {
   allow_proxy?: boolean;
   first_messages?: unknown;
   tags?: unknown;
+  avatar?: unknown;
 };
 
 // The prompt JanitorAI assembles for a generation, which is the only place a
@@ -246,9 +291,15 @@ export async function fetchJanitorCard(
     : [];
   if (!firstMessage && greetings[0]) firstMessage = greetings[0];
 
+  const avatar = await fetchAvatar(
+    page,
+    typeof meta.avatar === "string" ? meta.avatar : "",
+  );
+
   return {
     source: "janitorai",
     sourceUrl: url.href,
+    avatar,
     card: {
       spec: "chara_card_v2",
       spec_version: "2.0",
