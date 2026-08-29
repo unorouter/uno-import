@@ -99,21 +99,7 @@ const PARSE_IN_PAGE = `(async (id) => {
     }
     if (carried) {
       it.images = carried.images.concat(it.images);
-      it.label = carried.title;
       carried = null;
-    }
-    // A marker can end up titling an item two ways: it merged and the merged
-    // heading was itself a marker, or its own heading never came because that
-    // character's name was body-sized rather than heading-sized. Either way the
-    // real name is the first body line, which is how "PAGE 100" named a card.
-    const first = it.lines[0] || "";
-    const titleIsMarker = /^[^a-z]*\d+\s*$|^page\b/i.test(it.title);
-    const firstLooksLikeName =
-      first.length <= 48 && !/[:.]/.test(first) && first === first.toUpperCase();
-    if (titleIsMarker && firstLooksLikeName) {
-      it.label = it.title;
-      it.title = first;
-      it.lines = it.lines.slice(1);
     }
     items.push(it);
   }
@@ -148,7 +134,7 @@ const FETCH_IMAGE_IN_PAGE = `(async (src) => {
   } catch (e) { return null; }
 })`;
 
-type ParsedItem = { title: string; label?: string; lines: string[]; images: string[] };
+type ParsedItem = { title: string; lines: string[]; images: string[] };
 type Parsed = { error?: string; items?: ParsedItem[] };
 
 // "Height: 175cm" is a field; a paragraph of prose is not. Reference books are
@@ -181,6 +167,14 @@ export async function fetchGoogleDoc(
 
   const out: ImportResult[] = [];
   for (const item of items) {
+    // A ranking table is a heading whose body is mostly numbered names
+    // ("1. Pa-chin", "2. Draken"). It is a real section of the document and a
+    // real heading, but importing one produces a card whose entire personality
+    // is a leaderboard. Counting rather than requiring zero fields, because
+    // these tables carry a "BEST3:" column header that reads as a field.
+    const numbered = item.lines.filter((l) => /^\s*\d+\.\s/.test(l)).length;
+    if (numbered >= 2 && numbered >= item.lines.length / 2) continue;
+
     let avatar: UniformAsset | undefined;
     if (item.images[0]) {
       const raw = await page.evaluate(
@@ -209,13 +203,19 @@ export async function fetchGoogleDoc(
     const fields = item.lines.filter((l) => FIELD.test(l));
     const prose = item.lines.filter((l) => !FIELD.test(l));
 
-    // A ranking table is a heading whose body is mostly numbered names
-    // ("1. Pa-chin", "2. Draken"). It is a real section of the document and a
-    // real heading, but importing one produces a card whose entire personality
-    // is a leaderboard. Counting rather than requiring zero fields, because
-    // these tables carry a "BEST3:" column header that reads as a field.
-    const numbered = item.lines.filter((l) => /^\s*\d+\.\s/.test(l)).length;
-    if (numbered >= 2 && numbered >= item.lines.length / 2) continue;
+    // A page marker titles an item whenever that character's name was written
+    // body-sized, so no heading ever opened one and the marker above it is all
+    // the item had. The name is then the first prose line: it cannot be among
+    // the fields, because a name is not "Key: value", and it need not be the
+    // first LINE, since this book puts the stat block above the name.
+    const marker = /^[^a-z]*\d+\s*$|^page\b/i.test(item.title);
+    const candidate = prose[0] ?? "";
+    const named =
+      marker &&
+      candidate.length <= 48 &&
+      !candidate.includes(".") &&
+      candidate === candidate.toUpperCase();
+    if (named) prose.shift();
 
     out.push({
       source: "google-docs",
@@ -225,7 +225,7 @@ export async function fetchGoogleDoc(
         spec: "chara_card_v2",
         spec_version: "2.0",
         data: {
-          name: item.title,
+          name: named ? candidate : item.title,
           description: prose.join("\n\n"),
           personality: fields.join("\n"),
           // A reference book has no greeting and no scenario. Leaving these
