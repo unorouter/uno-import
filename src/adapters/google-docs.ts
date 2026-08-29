@@ -145,9 +145,13 @@ export async function fetchGoogleDoc(
   const id = documentId(url.href);
   if (!id) throw new Error("google-docs: no document id in url");
 
+  // The DOCUMENT, not the docs.google.com root: the root redirects a signed-out
+  // browser to accounts.google.com, so navigating there never lands on the
+  // origin and the job fails before it can read anything. A public document
+  // serves fine without a session.
   const parsed = await evaluateOn<Parsed>(
     page,
-    "https://docs.google.com/",
+    `https://docs.google.com/document/d/${id}/mobilebasic`,
     `${PARSE_IN_PAGE}(${JSON.stringify(id)})`,
   );
   if (parsed?.error === "not_public") {
