@@ -95,6 +95,18 @@ const PARSE_IN_PAGE = `(async (id) => {
     if (carried) {
       it.images = carried.images.concat(it.images);
       it.label = carried.title;
+      // A label whose own heading never came keeps the label as its title,
+      // which is how "PAGE 100" ended up naming a character. When the first
+      // body line reads like a name and the label does not, that line IS the
+      // title and the label is what it always was: a page marker.
+      const first = it.lines[0] || "";
+      const labelIsMarker = /^[^a-z]*\d+\s*$|^page\b/i.test(it.title);
+      const firstLooksLikeName =
+        first.length <= 48 && !/[:.]/.test(first) && first === first.toUpperCase();
+      if (labelIsMarker && firstLooksLikeName) {
+        it.title = first;
+        it.lines = it.lines.slice(1);
+      }
       carried = null;
     }
     items.push(it);
@@ -190,6 +202,13 @@ export async function fetchGoogleDoc(
 
     const fields = item.lines.filter((l) => FIELD.test(l));
     const prose = item.lines.filter((l) => !FIELD.test(l));
+
+    // A ranking table is a heading with a body made of numbered names
+    // ("1. Pa-chin", "2. Draken") and no descriptive fields of its own. It is a
+    // real section of the document and not a character, so importing it as one
+    // produces a card whose entire personality is a leaderboard.
+    const numbered = item.lines.filter((l) => /^\s*\d+\.\s/.test(l)).length;
+    if (fields.length === 0 && numbered >= 2) continue;
 
     out.push({
       source: "google-docs",
