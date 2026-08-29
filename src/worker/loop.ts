@@ -30,7 +30,7 @@ import {
 } from "../adapters/janitorai";
 import { fetchJanitorCard, hasJanitorAuth } from "../adapters/janitorai-auth";
 import { toEntries } from "../adapters/entries";
-import type { ImportResult } from "../types/uniform-card";
+import type { ImportResult, ImportResults } from "../types/uniform-card";
 import {
   findUsableExit,
   gracefulShutdown,
@@ -91,7 +91,7 @@ export const consecutiveJobFailures = () => failStreak;
 // A list because one URL can hold many items: a Google Docs character book has
 // that had to be flattened into one result to fit. Single-item sources wrap
 // here rather than in nine adapters, so each adapter stays single-purpose.
-async function runJob(job: queue.Job): Promise<ImportResult[]> {
+async function runJob(job: queue.Job): Promise<ImportResults> {
   const url = new URL(job.url);
   // A standalone lorebook link, checked before the character adapters: both
   // live on janitorai.com and only the path tells them apart.
