@@ -10,7 +10,7 @@ import {
 const MAX_IN_FLIGHT_PER_USER = 3;
 
 const SUPPORTED =
-  /(^|\.)(datacat\.run|janitorai\.com|janitor\.ai|jannyai\.com|chub\.ai|characterhub\.org|realm\.risuai\.net|lorebary\.com|saucepan\.ai|botbooru\.com|character-tavern\.com)$/i;
+  /(^|\.)(datacat\.run|janitorai\.com|janitor\.ai|jannyai\.com|chub\.ai|characterhub\.org|realm\.risuai\.net|lorebary\.com|saucepan\.ai|botbooru\.com|character-tavern\.com|docs\.google\.com)$/i;
 
 // Same chain unorouter reads (src/lib/custom-fetch.ts): Cloudflare sets
 // cf-connecting-ip, and the others cover any other hop. Behind cloudflared the
