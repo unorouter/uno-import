@@ -1,4 +1,4 @@
-import type { ImportResult } from "../types/uniform-card";
+import type { ImportResults } from "../types/uniform-card";
 
 export type JobStatus = "queued" | "running" | "done" | "failed";
 
@@ -12,7 +12,7 @@ export type Job = {
   status: JobStatus;
   createdAt: number;
   finishedAt?: number;
-  result?: ImportResult[];
+  result?: ImportResults;
   error?: string;
 };
 
@@ -63,7 +63,7 @@ export function take(): Job | null {
   return null;
 }
 
-export function finish(job: Job, result: ImportResult[]) {
+export function finish(job: Job, result: ImportResults) {
   job.status = "done";
   job.result = result;
   job.finishedAt = Date.now();

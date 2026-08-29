@@ -132,3 +132,10 @@ export type ImportResult =
       triggers?: unknown;
       assets: UniformAsset[];
     };
+
+// The job payload, named as ONE type on purpose. Returning `ImportResult[]`
+// inline made fromTypes distribute the array across the union, so the emitted
+// schema said "one of the six variants, or an array of the last one" and the
+// generated client typed five of them as single objects. A named alias emits a
+// plain array of the union instead.
+export type ImportResults = ImportResult[];
