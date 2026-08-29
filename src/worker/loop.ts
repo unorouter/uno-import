@@ -41,6 +41,11 @@ import {
   matchesLorebook,
   recoverLorebooks,
 } from "../adapters/janitorai";
+import {
+  fetchJanitorCard,
+  hasJanitorAuth,
+  janitorToUniform,
+} from "../adapters/janitorai-auth";
 import { toEntries } from "../adapters/entries";
 import type { ImportResult } from "../types/uniform-card";
 import {
@@ -125,7 +130,25 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
   if (matchesSaucepan(url)) return fetchSaucepan(url);
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
-  const { card, retryIds } = await datacat.fetchCard(page!, url);
+  let fetched;
+  try {
+    fetched = await datacat.fetchCard(page!, url);
+  } catch (err) {
+    // datacat only knows what it has crawled, so a character published recently
+    // or never indexed 404s there while JanitorAI serves it fine. Ask the source
+    // directly before giving up, which needs a signed-in session because a card
+    // like this is usually the explicit kind that answers 401 to anonymous.
+    const missing =
+      err instanceof Error && /character not indexed/.test(err.message);
+    const id = datacat.characterId(url.href);
+    if (!missing || !id || !hasJanitorAuth()) throw err;
+    const direct = await fetchJanitorCard(page!, id);
+    // Rethrow datacat's error rather than inventing one: falling back is a bonus
+    // path, and its failure says nothing new about the card.
+    if (!direct) throw err;
+    return janitorToUniform(direct, url);
+  }
+  const { card, retryIds } = fetched;
 
   // Ask JanitorAI for the books datacat could not fetch. Anything still missing
   // stays in `skipped`, which is what the UI shows the user by name.
@@ -148,7 +171,13 @@ export async function startWorker() {
   //     'P=$(ps aux | grep -o "\-\-remote-debugging-port=[0-9]*" | head -1 | cut -d= -f2); \
   //      curl -s 127.0.0.1:$P/json | tr "," "\n" | grep url'
   // That is how the tab was caught sitting on disney.com mid-job.
-  const { browser, page: p } = await connect({ turnstile: true });
+  // A persistent profile: the JanitorAI session is a Supabase cookie, so without
+  // this every pod restart logs in again, and a login loop on a shared account is
+  // what gets one flagged. The dir is a volume, so it survives the container.
+  const { browser, page: p } = await connect({
+    turnstile: true,
+    customConfig: { userDataDir: process.env.BROWSER_PROFILE_DIR || undefined },
+  });
   registerBrowserForShutdown(browser);
 
   // Work on our OWN tab. connect() returns chrome's startup tab, and something
