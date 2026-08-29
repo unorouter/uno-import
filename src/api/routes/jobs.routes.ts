@@ -78,7 +78,24 @@ export const jobsRoutes = new Elysia()
         queuePosition: queue.positionOf(params.id),
       };
     },
-    { params: t.Object({ id: t.String() }) },
+    {
+      params: t.Object({ id: t.String() }),
+      // An EXPLICIT response schema, because fromTypes cannot express this one:
+      // it distributes an array over a union, so `ImportResult[]` emitted as
+      // "one of the six variants, OR an array of the last variant", and the
+      // generated client typed five of them as single objects. t.Any() for the
+      // element keeps the array shape honest; the client narrows on `kind`
+      // anyway, exactly as it did when this was one object.
+      response: {
+        200: t.Object({
+          status: t.String(),
+          result: t.Union([t.Array(t.Any()), t.Null()]),
+          error: t.Union([t.String(), t.Null()]),
+          queuePosition: t.Number(),
+        }),
+        404: t.Object({ error: t.String() }),
+      },
+    },
   )
   // ok reports whether the API can accept work, not whether the last probe
   // passed: a challenged exit is recoverable per job, and failing readiness for
