@@ -167,13 +167,11 @@ export async function startWorker() {
   //     'P=$(ps aux | grep -o "\-\-remote-debugging-port=[0-9]*" | head -1 | cut -d= -f2); \
   //      curl -s 127.0.0.1:$P/json | tr "," "\n" | grep url'
   // That is how the tab was caught sitting on disney.com mid-job.
-  // A persistent profile: the JanitorAI session is a Supabase cookie, so without
-  // this every pod restart logs in again, and a login loop on a shared account is
-  // what gets one flagged. The dir is a volume, so it survives the container.
-  const { browser, page: p } = await connect({
-    turnstile: true,
-    customConfig: { userDataDir: process.env.BROWSER_PROFILE_DIR || undefined },
-  });
+  // No userDataDir: pointing chrome-launcher at the mounted profile made Chrome
+  // fail to start at all (the driver's debug port answered ECONNREFUSED and the
+  // container crash-looped), so the JanitorAI session is re-established per pod
+  // rather than persisted. Revisit only with a profile Chrome will actually open.
+  const { browser, page: p } = await connect({ turnstile: true });
   registerBrowserForShutdown(browser);
 
   // Work on our OWN tab. connect() returns chrome's startup tab, and something
