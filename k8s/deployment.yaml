@@ -25,6 +25,19 @@ data:
     routes = ["GET /v1/publicip/ip", "GET /v1/vpn/status", "PUT /v1/vpn/status"]
     auth = "none"
 ---
+# Chrome's profile directory. local-path is node-local, which suits a Deployment
+# that is pinned to one replica anyway (one browser, one tunnel); a rescheduled
+# pod loses the session and simply logs in again.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uno-import-profile
+  namespace: services
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 2Gi }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -121,6 +134,8 @@ spec:
                 { secretKeyRef: { name: uno-import-env, key: API_TOKEN } }
             # Which origins may read a response from a browser. Not a secret and
             # not access control: the import endpoints take no token.
+            - name: BROWSER_PROFILE_DIR
+              value: "/profile"
             - name: CORS_ORIGINS
               value: "http://localhost:3000,https://unorouter.com,https://www.unorouter.com"
           envFrom:
@@ -132,6 +147,10 @@ spec:
           volumeMounts:
             - name: dshm
               mountPath: /dev/shm
+            # Chrome's profile. Holds the JanitorAI session cookie, so a restart
+            # reuses the login instead of signing in again on a shared account.
+            - name: browser-profile
+              mountPath: /profile
           resources:
             requests: { memory: 512Mi, cpu: 200m }
             # Chrome grows with every page load a job makes, and a job that
@@ -187,3 +206,5 @@ spec:
           configMap: { name: uno-import-gluetun-auth }
         - name: dshm
           emptyDir: { medium: Memory, sizeLimit: 1Gi }
+        - name: browser-profile
+          persistentVolumeClaim: { claimName: uno-import-profile }
