@@ -5,6 +5,7 @@ import {
   fetchChubLorebook,
   matchesChubLorebook,
 } from "../adapters/chub-lorebook";
+import { fetchGoogleDoc, matchesGoogleDocs } from "../adapters/google-docs";
 import { fetchRisu, matchesRisu } from "../adapters/risurealm";
 import {
   fetchBotbooru,
@@ -87,22 +88,28 @@ export const egressHealthy = () =>
 
 export const consecutiveJobFailures = () => failStreak;
 
-async function runJob(job: queue.Job): Promise<ImportResult> {
+// A list because one URL can hold many items: a Google Docs character book has
+// that had to be flattened into one result to fit. Single-item sources wrap
+// here rather than in nine adapters, so each adapter stays single-purpose.
+async function runJob(job: queue.Job): Promise<ImportResult[]> {
   const url = new URL(job.url);
   // A standalone lorebook link, checked before the character adapters: both
   // live on janitorai.com and only the path tells them apart.
-  if (matchesLorebook(url)) return fetchLorebook(page!, url, toEntries);
+  if (matchesLorebook(url)) return [await fetchLorebook(page!, url, toEntries)];
   // chub /lorebooks/ before the character adapter: both live on chub.ai and only
   // the first path segment tells them apart.
-  if (matchesChubLorebook(url)) return fetchChubLorebook(page!, url, toEntries);
+  if (matchesChubLorebook(url))
+    return [await fetchChubLorebook(page!, url, toEntries)];
   // specific matchers run before the persona one.
-  if (png.matchesChub(url)) return png.fetchChub(page!, url, toEntries);
-  if (matchesRisu(url)) return fetchRisu(page!, url, toEntries);
-  if (matchesBotbooruLorebook(url)) return fetchBotbooruLorebook(url);
-  if (matchesBotbooru(url)) return fetchBotbooru(url);
-  if (matchesCharacterTavern(url)) return fetchCharacterTavern(url);
-  if (matchesSaucepanLorebook(url)) return fetchSaucepanLorebook(url);
-  if (matchesSaucepan(url)) return fetchSaucepan(url);
+  if (png.matchesChub(url)) return [await png.fetchChub(page!, url, toEntries)];
+  if (matchesRisu(url)) return [await fetchRisu(page!, url, toEntries)];
+  // The only source that returns MANY characters from one URL.
+  if (matchesGoogleDocs(url)) return fetchGoogleDoc(page!, url);
+  if (matchesBotbooruLorebook(url)) return [await fetchBotbooruLorebook(url)];
+  if (matchesBotbooru(url)) return [await fetchBotbooru(url)];
+  if (matchesCharacterTavern(url)) return [await fetchCharacterTavern(url)];
+  if (matchesSaucepanLorebook(url)) return [await fetchSaucepanLorebook(url)];
+  if (matchesSaucepan(url)) return [await fetchSaucepan(url)];
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
   let fetched;
@@ -121,7 +128,7 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
     // Rethrow datacat's error rather than inventing one: falling back is a bonus
     // path, and its failure says nothing new about the card.
     if (!direct) throw err;
-    return direct;
+    return [direct];
   }
   const { card, retryIds } = fetched;
 
@@ -135,7 +142,7 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
       if (i >= 0) card.skipped.splice(i, 1);
     }
   }
-  return card;
+  return [card];
 }
 
 export async function startWorker() {
