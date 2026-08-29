@@ -91,23 +91,29 @@ const PARSE_IN_PAGE = `(async (id) => {
   const items = [];
   let carried = null;
   for (const it of raw) {
-    if (!it.lines.length) { carried = it; continue; }
+    if (!it.lines.length) {
+      // Two markers in a row means the first one's item never came, so it is
+      // dropped rather than kept as a title of its own.
+      carried = it;
+      continue;
+    }
     if (carried) {
       it.images = carried.images.concat(it.images);
       it.label = carried.title;
-      // A label whose own heading never came keeps the label as its title,
-      // which is how "PAGE 100" ended up naming a character. When the first
-      // body line reads like a name and the label does not, that line IS the
-      // title and the label is what it always was: a page marker.
-      const first = it.lines[0] || "";
-      const labelIsMarker = /^[^a-z]*\d+\s*$|^page\b/i.test(it.title);
-      const firstLooksLikeName =
-        first.length <= 48 && !/[:.]/.test(first) && first === first.toUpperCase();
-      if (labelIsMarker && firstLooksLikeName) {
-        it.title = first;
-        it.lines = it.lines.slice(1);
-      }
       carried = null;
+    }
+    // A marker can end up titling an item two ways: it merged and the merged
+    // heading was itself a marker, or its own heading never came because that
+    // character's name was body-sized rather than heading-sized. Either way the
+    // real name is the first body line, which is how "PAGE 100" named a card.
+    const first = it.lines[0] || "";
+    const titleIsMarker = /^[^a-z]*\d+\s*$|^page\b/i.test(it.title);
+    const firstLooksLikeName =
+      first.length <= 48 && !/[:.]/.test(first) && first === first.toUpperCase();
+    if (titleIsMarker && firstLooksLikeName) {
+      it.label = it.title;
+      it.title = first;
+      it.lines = it.lines.slice(1);
     }
     items.push(it);
   }
@@ -203,12 +209,13 @@ export async function fetchGoogleDoc(
     const fields = item.lines.filter((l) => FIELD.test(l));
     const prose = item.lines.filter((l) => !FIELD.test(l));
 
-    // A ranking table is a heading with a body made of numbered names
-    // ("1. Pa-chin", "2. Draken") and no descriptive fields of its own. It is a
-    // real section of the document and not a character, so importing it as one
-    // produces a card whose entire personality is a leaderboard.
+    // A ranking table is a heading whose body is mostly numbered names
+    // ("1. Pa-chin", "2. Draken"). It is a real section of the document and a
+    // real heading, but importing one produces a card whose entire personality
+    // is a leaderboard. Counting rather than requiring zero fields, because
+    // these tables carry a "BEST3:" column header that reads as a field.
     const numbered = item.lines.filter((l) => /^\s*\d+\.\s/.test(l)).length;
-    if (fields.length === 0 && numbered >= 2) continue;
+    if (numbered >= 2 && numbered >= item.lines.length / 2) continue;
 
     out.push({
       source: "google-docs",
