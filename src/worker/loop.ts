@@ -41,11 +41,7 @@ import {
   matchesLorebook,
   recoverLorebooks,
 } from "../adapters/janitorai";
-import {
-  fetchJanitorCard,
-  hasJanitorAuth,
-  janitorToUniform,
-} from "../adapters/janitorai-auth";
+import { fetchJanitorCard, hasJanitorAuth } from "../adapters/janitorai-auth";
 import { toEntries } from "../adapters/entries";
 import type { ImportResult } from "../types/uniform-card";
 import {
@@ -142,11 +138,11 @@ async function runJob(job: queue.Job): Promise<ImportResult> {
       err instanceof Error && /character not indexed/.test(err.message);
     const id = datacat.characterId(url.href);
     if (!missing || !id || !hasJanitorAuth()) throw err;
-    const direct = await fetchJanitorCard(page!, id);
+    const direct = await fetchJanitorCard(page!, id, url);
     // Rethrow datacat's error rather than inventing one: falling back is a bonus
     // path, and its failure says nothing new about the card.
     if (!direct) throw err;
-    return janitorToUniform(direct, url);
+    return direct;
   }
   const { card, retryIds } = fetched;
 
