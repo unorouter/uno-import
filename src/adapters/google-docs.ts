@@ -1,5 +1,9 @@
 import type { PageWithCursor } from "puppeteer-real-browser";
-import type { ImportResult, UniformAsset } from "../types/uniform-card";
+import type {
+  ImportResult,
+  UniformAsset,
+  UniformEntry,
+} from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
 
 // A reference document, which is one URL holding MANY characters: the Tokyo
@@ -112,7 +116,10 @@ const PARSE_IN_PAGE = `(async (id) => {
       images: nodes.flatMap((n) => n.images),
     });
   }
-  return { items };
+  return {
+    items,
+    title: (document.title || "").replace(/ - Google Docs$/, "").trim(),
+  };
 })`;
 
 // Assets are a second fetch each and only the portrait is worth carrying, so
@@ -135,7 +142,7 @@ const FETCH_IMAGE_IN_PAGE = `(async (src) => {
 })`;
 
 type ParsedItem = { title: string; lines: string[]; images: string[] };
-type Parsed = { error?: string; items?: ParsedItem[] };
+type Parsed = { error?: string; items?: ParsedItem[]; title?: string };
 
 // "Height: 175cm" is a field; a paragraph of prose is not. Reference books are
 // mostly the former, and keeping them apart is what lets the key-value lines
@@ -166,6 +173,9 @@ export async function fetchGoogleDoc(
   if (items.length === 0) throw new Error("google-docs: no importable content");
 
   const out: ImportResult[] = [];
+  const entries: UniformEntry[] = [];
+  // Named for the document, which is what the reader recognises in a list.
+  const docTitle = parsed?.title?.trim() || "Imported document";
   for (const item of items) {
     // A ranking table is a heading whose body is mostly numbered names
     // ("1. Pa-chin", "2. Draken"). It is a real section of the document and a
@@ -247,6 +257,38 @@ export async function fetchGoogleDoc(
       lorebooks: [],
       skipped: [],
     });
+
+    // The same entry, keyed by the name, for the lorebook below.
+    entries.push({
+      keys: [named ? candidate : item.title],
+      content: [fields.join("\n"), prose.join("\n\n")]
+        .filter(Boolean)
+        .join("\n\n"),
+      comment: named ? candidate : item.title,
+      enabled: true,
+      constant: false,
+      selective: false,
+      priority: 100,
+      orderIndex: entries.length,
+      matchWholeWords: false,
+    });
   }
+
+  // A reference book is not really 23 separate characters: it is one setting the
+  // reader wants ALL of, and importing it as 23 cards means picking one and
+  // losing the rest. The same items therefore also travel as a single lorebook
+  // keyed by name, so a chat can pull in whichever character comes up. Both
+  // shapes ship and the picker decides, because a document of actual character
+  // sheets is a legitimate card import too.
+  if (entries.length > 1) {
+    out.push({
+      kind: "lorebook",
+      source: "google-docs",
+      sourceUrl: url.href,
+      lorebooks: [{ name: docTitle, entries }],
+      skipped: [],
+    });
+  }
+
   return out;
 }
