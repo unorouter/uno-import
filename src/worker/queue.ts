@@ -27,6 +27,12 @@ const FINISHED_TTL_MS = 10 * 60_000;
 // Comfortably past the worker's own 15-minute deadline, so this only fires for
 // a job the worker will never settle (crashed mid-run, lost to a pod restart).
 const STUCK_TTL_MS = 20 * 60_000;
+// A job that is still QUEUED has not been taken yet, so the worker's deadlines
+// do not apply to it: on 2026-09-04 the tunnel died, one job held the loop
+// retrying, and everything behind it sat queued for hours with the client
+// polling a status that never changed. Waiting is normal, waiting forever is a
+// hang, and the user needs an error they can act on.
+const QUEUED_TTL_MS = 5 * 60_000;
 
 export function submit(url: string, caller: string): Job {
   const job: Job = {
@@ -101,6 +107,12 @@ export function sweep() {
     // after three of them every further import is refused. That is not
     // hypothetical, it is what a wedged job did to a user. Nothing legitimately
     // outlives the worker's own deadline, so past it the job is declared dead.
+    if (job.status === "queued" && now - job.createdAt > QUEUED_TTL_MS) {
+      job.status = "failed";
+      job.error = "queue timed out: the import worker is not picking up jobs";
+      job.finishedAt = now;
+      continue;
+    }
     if (!job.finishedAt && now - job.createdAt > STUCK_TTL_MS) {
       job.status = "failed";
       job.error = "timed out";

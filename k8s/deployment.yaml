@@ -118,6 +118,30 @@ spec:
             # completes, which is a self-inflicted outage rather than a recovery.
             - name: HEALTH_VPN_DURATION_INITIAL
               value: "60s"
+          # gluetun's own healthcheck only ever restarts OPENVPN, and that cannot
+          # fix a namespace whose routing is wrong: on 2026-09-04 openvpn logged
+          # "Linux route add command failed" then "Initialization Sequence
+          # Completed", tun0 never carried a default route, and the same restart
+          # ran 119 times over 16 hours while every import hung. Escalate to a
+          # POD restart, which is what actually rebuilds the network namespace.
+          #
+          # public_ip is the signal: gluetun blanks it whenever the tunnel has no
+          # usable exit, and it is served from localhost so the probe does not
+          # depend on the very egress it is testing.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  wget -qO- --timeout=5 http://127.0.0.1:8000/v1/publicip/ip
+                  | grep -q '"public_ip":"[0-9]'
+            # Long: a legitimate reroll blanks the IP for ~15s, and PIA handshakes
+            # are slow. Only a tunnel that is down for ten straight minutes trips.
+            initialDelaySeconds: 180
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 10
           volumeMounts:
             - name: gluetun-auth
               mountPath: /gluetun/auth

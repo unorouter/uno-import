@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { exitIp } from "../../worker/page-tools";
 import * as queue from "../../worker/queue";
 import {
+  consecutiveAttemptFailures,
   consecutiveJobFailures,
   egressHealthy,
   workerReady,
@@ -109,6 +110,7 @@ export const jobsRoutes = new Elysia()
     exitIp: await exitIp(),
     queueDepth: queue.queueDepth(),
     failStreak: consecutiveJobFailures(),
+    attemptFailStreak: consecutiveAttemptFailures(),
   }))
   // Liveness only: 503 once egress is persistently dead, so the kubelet
   // restarts the container and gluetun comes back on a fresh tunnel.
@@ -119,6 +121,7 @@ export const jobsRoutes = new Elysia()
       exitIp: await exitIp(),
       queueDepth: queue.queueDepth(),
       failStreak: consecutiveJobFailures(),
+      attemptFailStreak: consecutiveAttemptFailures(),
     };
     // 503 so the liveness probe can actually restart the pod. Reporting 200 on a
     // dead tunnel is what let an outage run: gluetun was flapping, every job

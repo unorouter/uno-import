@@ -57,7 +57,12 @@ export const rotateVpn = async (): Promise<boolean> => {
     await sleep(3000);
     await setVpn("running");
     await sleep(14000); // reconnect plus public-ip settle
-    return true;
+    // A roll that lands with no exit at all is not a fresh address, it is a
+    // tunnel that never came up. Report it so the caller stops paying 17s a
+    // roll for a namespace whose default route is gone (2026-09-04: openvpn
+    // logged "Linux route add command failed" then "Initialization Sequence
+    // Completed", and every roll after that was dead time).
+    return (await exitIp()) !== "";
   } catch {
     return false;
   }
