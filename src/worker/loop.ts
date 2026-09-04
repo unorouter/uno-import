@@ -97,10 +97,26 @@ export const workerReady = () => ready;
 // literal), but nothing legitimate fails this many jobs back to back.
 const DEAD_AFTER_CONSECUTIVE_JOB_FAILURES = 5;
 
+// The streak above only moves when a job SETTLES, and a job retries until its
+// deadline: with the tunnel down every attempt burns ~50s in rotateVpn, so one
+// job can hold the loop for its full 15 minutes while failStreak sits at 0 and
+// liveness stays green. That is the shape of the 2026-09-04 outage, where the
+// route install failed silently ("Linux route add command failed" followed by
+// "Initialization Sequence Completed"), gluetun restarted itself 119 times, and
+// jobs queued for hours behind a worker that never took another one.
+//
+// So track failing ATTEMPTS too. A rolled exit that cannot reach the open web
+// is not a challenged exit, it is no egress at all, and no number of rerolls
+// fixes a namespace whose default route is gone.
+const DEAD_AFTER_CONSECUTIVE_ATTEMPT_FAILURES = 12;
+let attemptFailStreak = 0;
+
 export const egressHealthy = () =>
-  failStreak < DEAD_AFTER_CONSECUTIVE_JOB_FAILURES;
+  failStreak < DEAD_AFTER_CONSECUTIVE_JOB_FAILURES &&
+  attemptFailStreak < DEAD_AFTER_CONSECUTIVE_ATTEMPT_FAILURES;
 
 export const consecutiveJobFailures = () => failStreak;
+export const consecutiveAttemptFailures = () => attemptFailStreak;
 
 // A list because one URL can hold many items: a Google Docs character book has
 // 29, and chub lorebook pages and lorebary scenarios already carried several
@@ -247,6 +263,7 @@ export async function startWorker() {
       try {
         queue.finish(job, await runJob(job));
         failStreak = 0;
+        attemptFailStreak = 0;
         break;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
@@ -259,6 +276,9 @@ export async function startWorker() {
         // fresh exit, so rerolling one only delays the same answer to the
         // deadline.
         const settled = PERMANENT.test(lastError);
+        // An upstream verdict says nothing about the tunnel, so it must not
+        // push the pod toward a restart.
+        if (!direct && !settled) attemptFailStreak++;
         if (Date.now() > deadline || direct || settled) {
           // Only a job that exhausted its whole deadline counts: a permanent
           // upstream verdict (private card, 404) says nothing about egress.
@@ -291,7 +311,15 @@ export async function startWorker() {
         // for 200+ attempts. Rotating AFTER the search is worse still: it
         // discards the exit just validated and runs the next attempt while the
         // tunnel is still coming up.
-        await rotateVpn();
+        //
+        // A false return means the roll produced no exit IP at all. Rerolling
+        // cannot fix that, so end the job now and let the attempt streak carry
+        // the pod to a restart instead of spending the deadline on dead time.
+        if (!(await rotateVpn())) {
+          failStreak++;
+          queue.fail(job, `no egress: ${lastError}`);
+          break;
+        }
         await findUsableExit(page!, ROLLS_PER_ATTEMPT);
       }
     }
