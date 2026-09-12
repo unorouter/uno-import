@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: uno-import
-  namespace: services
+  namespace: uno-import
 spec:
   selector: { app: uno-import }
   ports:
@@ -17,7 +17,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: uno-import-gluetun-auth
-  namespace: services
+  namespace: uno-import
 data:
   config.toml: |
     [[roles]]
@@ -32,7 +32,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: uno-import-profile
-  namespace: services
+  namespace: uno-import
 spec:
   accessModes: [ReadWriteOnce]
   resources:
@@ -42,7 +42,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: uno-import
-  namespace: services
+  namespace: uno-import
 spec:
   # ONE browser and ONE tunnel. A second replica would rotate the exit out from
   # under the other's in-flight page load.
