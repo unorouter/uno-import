@@ -55,6 +55,7 @@ spec:
     metadata:
       labels: { app: uno-import }
     spec:
+      priorityClassName: batch
       # NOT the cluster-wide ghcr-pull secret: that credential 403s on this
       # package while the push credential resolves it, so uno-import-pull is built
       # from the latter. The kubelet pulls anonymously otherwise, and a new GHCR
