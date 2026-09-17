@@ -46,7 +46,11 @@ const FETCH_IN_PAGE = `(async (id) => {
     headers: { accept: "application/json", "x-session-token": sessionToken },
   });
   if (res.status === 404) return { error: "not_found" };
-  if (!res.ok) return { error: "character " + res.status };
+  if (!res.ok) {
+    const code = await res.json().then((b) => b && b.code, () => null);
+    if (code === "CREATOR_REDIRECT_REQUIRED") return { error: "creator_blocked" };
+    return { error: "character " + res.status };
+  }
   const body = await res.json();
   const c = body.character;
   if (!c) return { error: "empty" };
@@ -115,6 +119,12 @@ export async function fetchCard(
   // thing. Marked so the worker fails it immediately.
   if (raw?.error === "not_found") {
     throw new Error("datacat: character not indexed");
+  }
+  // A creator can ask datacat to stop serving their cards: it answers 403 with
+  // this code on every exit, forever. Left as a plain 403 it was retried to the
+  // deadline, holding the one browser for 15 minutes per import.
+  if (raw?.error === "creator_blocked") {
+    throw new Error("datacat: downloads disabled by creator");
   }
   // Keep the page URL for the rest: a failure at identify means the evaluate ran
   // somewhere other than datacat's origin, which is a different bug entirely.
