@@ -54,6 +54,9 @@ spec:
   template:
     metadata:
       labels: { app: uno-import }
+      # Velero PV backup is opt in. The logged in browser profile is the one thing here that
+      # git cannot rebuild, and it sits on a node-local volume.
+      annotations: { backup.velero.io/backup-volumes: browser-profile }
     spec:
       priorityClassName: batch
       # NOT the cluster-wide ghcr-pull secret: that credential 403s on this
