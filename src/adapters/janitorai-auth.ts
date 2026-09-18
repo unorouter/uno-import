@@ -165,18 +165,25 @@ type JanitorMeta = {
   avatar?: unknown;
 };
 
-// The prompt JanitorAI assembles for a generation, which is the only place a
-// hidden definition still exists as text: every read endpoint strips it and sends
-// the token COUNTS instead. In proxy mode the endpoint assembles that prompt and
-// hands it back to its own caller rather than forwarding it, so one POST returns
-// what the card page will not show. Requires allow_proxy on the character.
-async function assembledPrompt(
+type Recovered = { greeting: string | null; prompt: string | null };
+
+// Everything a hidden definition still exposes, both of it behind the same
+// throwaway chat. Opening one is what makes JanitorAI materialise the withheld
+// greeting as a real message; the prompt it assembles for a generation is the
+// only place the rest of the definition survives as text, since every read
+// endpoint strips it and sends the token COUNTS instead. The prompt half needs
+// proxy mode (the endpoint then hands the assembled prompt back to its own
+// caller instead of forwarding it), the greeting half needs nothing.
+async function recoverViaChat(
   page: PageWithCursor,
   id: string,
   token: string,
-): Promise<string | null> {
+  wantPrompt: boolean,
+): Promise<Recovered> {
+  const empty: Recovered = { greeting: null, prompt: null };
   try {
     const text = await page.evaluate(`(async () => {
+      const WANT_PROMPT = ${wantPrompt};
       const H = {
         accept: "application/json",
         "content-type": "application/json",
@@ -190,8 +197,19 @@ async function assembledPrompt(
       const j = await made.json();
       const chatId = j?.id ?? j?.chat?.id;
       if (!chatId) return null;
+      // A DELETE carrying a content-type answers 400 on an empty body.
+      const drop = () => fetch("/hampter/chats/" + chatId, {
+        method: "DELETE",
+        headers: { accept: "application/json", authorization: H.authorization },
+      }).catch(() => {});
 
       const chat = await (await fetch("/hampter/chats/" + chatId, { headers: H })).json();
+      const opener = (chat.chatMessages || []).find((m) => m && m.is_bot);
+      const greeting = typeof opener?.message === "string" ? opener.message : null;
+      if (!WANT_PROMPT) {
+        await drop();
+        return JSON.stringify({ greeting, prompt: null });
+      }
       const c = chat.chat || {};
       const g = await fetch("/generateAlpha", {
         method: "POST", headers: H,
@@ -234,16 +252,24 @@ async function assembledPrompt(
           },
         }),
       });
-      if (!g.ok) return null;
+      await drop();
+      if (!g.ok) return JSON.stringify({ greeting, prompt: null });
       const body = await g.json();
       const sys = (body.messages || []).find(
         (m) => m.role === "system" || /Persona>/.test(m.content || ""),
       );
-      return sys?.content || null;
+      return JSON.stringify({ greeting, prompt: sys?.content || null });
     })()`);
-    return typeof text === "string" ? text : null;
+    if (typeof text !== "string") return empty;
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object") return empty;
+    const rec: { greeting?: unknown; prompt?: unknown } = parsed;
+    return {
+      greeting: typeof rec.greeting === "string" ? rec.greeting : null,
+      prompt: typeof rec.prompt === "string" ? rec.prompt : null,
+    };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -275,21 +301,29 @@ export async function fetchJanitorCard(
   let personality = str(meta.personality);
   let firstMessage = str(meta.first_message);
 
-  // Hidden definition: recoverable only when the creator left proxies on.
-  if (!personality && meta.allow_proxy !== false) {
-    const prompt = await assembledPrompt(page, id, token);
-    if (prompt) {
-      const inner = /<[^>]*Persona>([\s\S]*?)<\/[^>]*Persona>/.exec(prompt);
-      personality = (inner?.[1] ?? prompt)
+  // A hidden definition takes the MAIN greeting with it, and only that one:
+  // first_messages keeps its length and turns entry 0 into null, so the
+  // alternates still arrive. Dropping the hole instead of filling it promoted
+  // the first alternate to greeting, and a card whose only greeting was the
+  // hidden one imported with none at all.
+  const list = Array.isArray(meta.first_messages) ? meta.first_messages : [];
+  const greetings = list.filter((m): m is string => typeof m === "string");
+  if (!firstMessage && typeof list[0] === "string") firstMessage = greetings[0];
+  const wantPrompt = !personality && meta.allow_proxy !== false;
+  if (!firstMessage || wantPrompt) {
+    const recovered = await recoverViaChat(page, id, token, wantPrompt);
+    if (!firstMessage && recovered.greeting) firstMessage = recovered.greeting;
+    if (wantPrompt && recovered.prompt) {
+      const inner = /<[^>]*Persona>([\s\S]*?)<\/[^>]*Persona>/.exec(
+        recovered.prompt,
+      );
+      personality = (inner?.[1] ?? recovered.prompt)
         .replace(/<UserPersona>[\s\S]*?<\/UserPersona>/g, "")
         .trim();
     }
   }
-
-  const greetings = Array.isArray(meta.first_messages)
-    ? meta.first_messages.filter((m): m is string => typeof m === "string")
-    : [];
-  if (!firstMessage && greetings[0]) firstMessage = greetings[0];
+  // Whatever became the greeting is not also an alternate.
+  const alternates = greetings.filter((g) => g !== firstMessage);
 
   const avatar = await fetchAvatar(
     page,
@@ -311,7 +345,7 @@ export async function fetchJanitorCard(
         first_mes: firstMessage,
         mes_example: str(meta.example_dialogs),
         creator: str(meta.creator_name),
-        alternate_greetings: greetings.slice(1),
+        alternate_greetings: alternates,
         tags: Array.isArray(meta.tags)
           ? meta.tags
               .map((t) =>
