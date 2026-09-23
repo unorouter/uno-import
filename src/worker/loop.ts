@@ -34,7 +34,11 @@ import {
   matchesLorebook,
   recoverLorebooks,
 } from "../adapters/janitorai";
-import { fetchJanitorCard, hasJanitorAuth } from "../adapters/janitorai-auth";
+import {
+  completeFromJanitor,
+  fetchJanitorCard,
+  hasJanitorAuth,
+} from "../adapters/janitorai-auth";
 import { toEntries } from "../adapters/entries";
 import type { ImportResult, ImportResults } from "../types/uniform-card";
 import {
@@ -168,6 +172,12 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
       const i = card.skipped.findIndex((s) => s.title === book.name);
       if (i >= 0) card.skipped.splice(i, 1);
     }
+  }
+  const id = datacat.characterId(url.href);
+  if (id && hasJanitorAuth()) {
+    await completeFromJanitor(page!, id, card).catch((err) =>
+      console.warn(`[job] janitorai completion failed: ${err}`),
+    );
   }
   return [card];
 }
