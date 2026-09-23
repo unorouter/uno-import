@@ -24,6 +24,12 @@ import {
   matchesSaucepanLorebook,
 } from "../adapters/saucepan";
 import {
+  fetchSpicychat,
+  fetchSpicychatLorebook,
+  matchesSpicychat,
+  matchesSpicychatLorebook,
+} from "../adapters/spicychat";
+import {
   fetchLorebook,
   matchesLorebook,
   recoverLorebooks,
@@ -126,6 +132,8 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
   if (matchesCharacterTavern(url)) return [await fetchCharacterTavern(url)];
   if (matchesSaucepanLorebook(url)) return [await fetchSaucepanLorebook(url)];
   if (matchesSaucepan(url)) return [await fetchSaucepan(url)];
+  if (matchesSpicychatLorebook(url)) return [await fetchSpicychatLorebook(url)];
+  if (matchesSpicychat(url)) return [await fetchSpicychat(url)];
   if (!datacat.matches(url)) throw new Error("unsupported source");
 
   let fetched;
@@ -243,11 +251,13 @@ export async function startWorker() {
         break;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        // These three are fetched directly rather than through the page, so
+        // These are fetched directly rather than through the page, so
         // their failures say something about the request and nothing about the
         // exit, and rerolling one would burn the whole deadline on a card that
         // is simply not there.
-        const direct = /^(saucepan|botbooru|character-tavern):/.test(lastError);
+        const direct = /^(saucepan|botbooru|character-tavern|spicychat):/.test(
+          lastError,
+        );
         // A verdict the upstream gave us at HTTP 200 does not change on a
         // fresh exit, so rerolling one only delays the same answer to the
         // deadline.
@@ -264,10 +274,7 @@ export async function startWorker() {
           // reads nothing like the card being missing or private, so reporting
           // the last upstream error alone sends them chasing the wrong thing.
           const gaveUpEarly = !direct && !settled && !alone;
-          queue.fail(
-            job,
-            gaveUpEarly ? `busy: ${lastError}` : lastError,
-          );
+          queue.fail(job, gaveUpEarly ? `busy: ${lastError}` : lastError);
           break;
         }
         console.warn(`[job] attempt ${attempt} failed: ${lastError}`);
