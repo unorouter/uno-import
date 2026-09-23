@@ -66,4 +66,11 @@ Two independent creator flags decide what is possible, both readable from the pa
 - `showdefinition: false` strips `personality`, `scenario` and `example_dialogs` from EVERY read path (character API, chat API, SSR) while still sending `token_counts` for them. An import of one of these silently produces a character with a name and no personality.
 - `allow_proxy: false` means generation never routes anywhere the browser can read.
 
-`showdefinition: false` + `allow_proxy: true` is recoverable: `/generateAlpha` in proxy mode returns the assembled prompt to its own caller, so one authenticated POST carries the definition. That is what `unorouter/public/janitor-extract.js.txt` does, and it runs in the user's browser because janitorai answers 403 to a datacenter address. Both flags false is not recoverable by any means we will build.
+`showdefinition: false` + `allow_proxy: true` is recoverable: `/generateAlpha` in proxy mode returns the assembled prompt to its own caller. `unorouter/public/janitor-extract.js.txt` does this in the user's browser; the importer does it too (`janitorai-proxy.ts`), through its own signed-in session on the VPN exit. Both flags false is not recoverable by any means we will build.
+
+Private lorebooks come back the same way, and the traps are:
+
+- **One prompt is a random draw.** Entries fire by keyword and by chance under a per prompt cap (4 to 20 of 44 on the Tokyo Revengers bot), even for a probe with no keywords. Only many prompts separate the definition (lines in every prompt) from entries (lines that come and go together). The keys never reach the prompt; they are read off each entry's heading.
+- **Entries also land after `</example_dialogs>`**, outside every block. Reading only the three blocks misses them.
+- **`/generateAlpha` is rate limited per account**: a burst of about 6, then about one call per 2 seconds, then 429 `RATE_LIMIT_EXCEEDED`. The recovery paces at 2.1s; never parallelize it.
+- **The prompt writes the account's persona name wherever the definition says `{{user}}`**. The recovery sends a placeholder name and maps it back.

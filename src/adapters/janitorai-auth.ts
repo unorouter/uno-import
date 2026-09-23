@@ -1,6 +1,9 @@
 import type { PageWithCursor } from "puppeteer-real-browser";
 import type { UniformCard } from "../types/uniform-card";
 import { gotoOrigin } from "../worker/page-tools";
+import { toEntries } from "./entries";
+import { recoverLorebooks } from "./janitorai";
+import { recoverViaProxy } from "./janitorai-proxy";
 
 // JanitorAI serves a card datacat has never crawled, and serves the DEFINITION of
 // a card whose creator hid it, but only to a signed-in session. Both are why an
@@ -91,7 +94,10 @@ export async function ensureJanitorLogin(
     }
 
     for (const b of await page.$$("button")) {
-      const text = await page.evaluate((el: Element) => el.textContent?.trim() ?? "", b);
+      const text = await page.evaluate(
+        (el: Element) => el.textContent?.trim() ?? "",
+        b,
+      );
       if (/^sign ?in$/i.test(text)) {
         await b.click();
         break;
@@ -163,114 +169,106 @@ type JanitorMeta = {
   first_messages?: unknown;
   tags?: unknown;
   avatar?: unknown;
+  scripts?: { type?: string; id?: string; title?: string }[];
 };
 
-type Recovered = { greeting: string | null; prompt: string | null };
-
-// Everything a hidden definition still exposes, both of it behind the same
-// throwaway chat. Opening one is what makes JanitorAI materialise the withheld
-// greeting as a real message; the prompt it assembles for a generation is the
-// only place the rest of the definition survives as text, since every read
-// endpoint strips it and sends the token COUNTS instead. The prompt half needs
-// proxy mode (the endpoint then hands the assembled prompt back to its own
-// caller instead of forwarding it), the greeting half needs nothing.
-async function recoverViaChat(
+async function fetchMeta(
   page: PageWithCursor,
   id: string,
   token: string,
-  wantPrompt: boolean,
-): Promise<Recovered> {
-  const empty: Recovered = { greeting: null, prompt: null };
-  try {
-    const text = await page.evaluate(`(async () => {
-      const WANT_PROMPT = ${wantPrompt};
-      const H = {
+): Promise<JanitorMeta | null> {
+  const raw: unknown = await page.evaluate(`(async () => {
+    const r = await fetch("/hampter/characters/" + ${JSON.stringify(id)}, {
+      headers: {
         accept: "application/json",
-        "content-type": "application/json",
         authorization: "Bearer " + ${JSON.stringify(token)},
-      };
-      const made = await fetch("/hampter/chats", {
-        method: "POST", headers: H,
-        body: JSON.stringify({ character_id: ${JSON.stringify(id)} }),
-      });
-      if (!made.ok) return null;
-      const j = await made.json();
-      const chatId = j?.id ?? j?.chat?.id;
-      if (!chatId) return null;
-      // A DELETE carrying a content-type answers 400 on an empty body.
-      const drop = () => fetch("/hampter/chats/" + chatId, {
-        method: "DELETE",
-        headers: { accept: "application/json", authorization: H.authorization },
-      }).catch(() => {});
+      },
+    });
+    return r.ok ? await r.json() : null;
+  })()`);
+  return raw && typeof raw === "object" ? (raw as JanitorMeta) : null;
+}
 
-      const chat = await (await fetch("/hampter/chats/" + chatId, { headers: H })).json();
-      const opener = (chat.chatMessages || []).find((m) => m && m.is_bot);
-      const greeting = typeof opener?.message === "string" ? opener.message : null;
-      if (!WANT_PROMPT) {
-        await drop();
-        return JSON.stringify({ greeting, prompt: null });
-      }
-      const c = chat.chat || {};
-      const g = await fetch("/generateAlpha", {
-        method: "POST", headers: H,
-        body: JSON.stringify({
-          // Exactly the four fields the site sends: posting the full chat row
-          // back is what the API rejects.
-          chat: {
-            character_id: c.character_id ?? ${JSON.stringify(id)},
-            id: c.id ?? chatId,
-            summary: c.summary ?? "",
-            user_id: c.user_id,
-          },
-          chatMessages: chat.chatMessages ?? [],
-          clientPlatform: "web",
-          forcedPromptGenerationCacheRefetch:
-            { character: false, chat: false, profile: false, script: false },
-          generateMode: "NEW",
-          generateType: "CHAT",
-          profile: chat.personas?.[0] ?? null,
-          profiles: chat.personas ?? [],
-          // open_ai_mode "proxy" is the whole trick. The endpoint validates the
-          // shape but never contacts the endpoint named, so it can be anything;
-          // an incomplete userConfig answers 502 "your AI provider rejected the
-          // API key" while it tries to call a provider for real.
-          userConfig: {
-            api: "openai", open_ai_mode: "proxy",
-            open_ai_reverse_proxy: "https://example.invalid/v1/chat/completions",
-            reverseProxyKey: "extract", openAiModel: "gpt-4",
-            openAIKey: null, claudeApiKey: null, claudeModel: "",
-            claude_jailbreak_prompt: "", open_ai_jailbreak_prompt: "",
-            proxy_global_prompt: "", llm_prompt: "", bad_words: [],
-            allow_mobile_nsfw: true, janitor_router_enabled: false,
-            text_streaming: false,
-            generation_settings: {
-              context_length: 50000, enable_reasoning: false,
-              enable_reasoning_chat: false, enable_router_temperature: false,
-              enable_short_responses: false, max_new_token: 0,
-              prefill_enabled: false, prefill_text: "", temperature: 1,
-            },
-          },
-        }),
-      });
-      await drop();
-      if (!g.ok) return JSON.stringify({ greeting, prompt: null });
-      const body = await g.json();
-      const sys = (body.messages || []).find(
-        (m) => m.role === "system" || /Persona>/.test(m.content || ""),
-      );
-      return JSON.stringify({ greeting, prompt: sys?.content || null });
-    })()`);
-    if (typeof text !== "string") return empty;
-    const parsed: unknown = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object") return empty;
-    const rec: { greeting?: unknown; prompt?: unknown } = parsed;
-    return {
-      greeting: typeof rec.greeting === "string" ? rec.greeting : null,
-      prompt: typeof rec.prompt === "string" ? rec.prompt : null,
-    };
-  } catch {
-    return empty;
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+// Every read endpoint strips a hidden definition and a private lorebook alike,
+// and both survive only in the prompt JanitorAI assembles for a proxy.
+async function completeCard(
+  page: PageWithCursor,
+  id: string,
+  token: string,
+  meta: JanitorMeta,
+  card: UniformCard,
+) {
+  const data = card.card.data;
+  const books = (meta.scripts ?? []).flatMap((s) =>
+    s.type === "lorebook" && s.id
+      ? [{ id: s.id, title: s.title || "Untitled" }]
+      : [],
+  );
+  const have = new Set(card.lorebooks.map((b) => b.name));
+  let missing = books.filter((b) => !have.has(b.title));
+  if (missing.length > 0) {
+    const direct = await recoverLorebooks(
+      page,
+      missing.map((b) => b.id),
+      toEntries,
+    ).catch(() => []);
+    card.lorebooks.push(...direct);
+    const fetched = new Set(direct.map((b) => b.name));
+    missing = missing.filter((b) => !fetched.has(b.title));
   }
+  const hidden = !str(meta.personality);
+  if (!hidden && missing.length === 0 && str(data.first_mes)) return;
+
+  const withheld = () => {
+    for (const b of missing) {
+      if (!card.skipped.some((s) => s.title === b.title)) {
+        card.skipped.push({ title: b.title, reason: "private" });
+      }
+    }
+  };
+  // With the proxy off, one prompt still yields the greeting a hidden
+  // definition withholds, which opening the chat materialises.
+  const proxy = meta.allow_proxy !== false;
+  const got = await recoverViaProxy(page, id, token, {
+    probes: !proxy ? 1 : missing.length > 0 ? 25 : books.length > 0 ? 8 : 1,
+    seedText: [
+      str(meta.description).replace(/<[^>]+>/g, " "),
+      str(data.first_mes),
+      str(data.scenario),
+    ].join("\n"),
+  }).catch(() => null);
+  if (got?.greeting && !str(data.first_mes)) data.first_mes = got.greeting;
+  if (!got || !proxy) return withheld();
+  if (hidden) {
+    if (got.personality) data.personality = got.personality;
+    if (got.scenario) data.scenario = got.scenario;
+    if (got.examples) data.mes_example = got.examples;
+  }
+  if (missing.length === 0) return;
+  if (got.entries.length === 0) return withheld();
+  const [only] = missing;
+  const title =
+    missing.length === 1 && only ? only.title : `${str(data.name)} lorebook`;
+  // Marked because its keys come from each entry's heading, not the author's.
+  card.lorebooks.push({ name: `${title} (recovered)`, entries: got.entries });
+  const gone = new Set(missing.map((b) => b.title));
+  card.skipped = card.skipped.filter((s) => !gone.has(s.title));
+}
+
+// datacat never lists some books, and serves a hidden definition as whatever
+// one prompt happened to hold, so a signed-in session completes its card.
+export async function completeFromJanitor(
+  page: PageWithCursor,
+  id: string,
+  card: UniformCard,
+): Promise<void> {
+  if (!(await ensureJanitorLogin(page))) return;
+  const token = await bearer(page);
+  if (!token) return;
+  const meta = await fetchMeta(page, id, token);
+  if (meta) await completeCard(page, id, token, meta, card);
 }
 
 // Returns null rather than throwing: this is a fallback for what datacat could
@@ -284,23 +282,10 @@ export async function fetchJanitorCard(
   const token = await bearer(page);
   if (!token) return null;
 
-  const raw: unknown = await page.evaluate(`(async () => {
-    const r = await fetch("/hampter/characters/" + ${JSON.stringify(id)}, {
-      headers: {
-        accept: "application/json",
-        authorization: "Bearer " + ${JSON.stringify(token)},
-      },
-    });
-    return r.ok ? await r.json() : null;
-  })()`);
-  const meta: JanitorMeta | null =
-    raw && typeof raw === "object" ? (raw as JanitorMeta) : null;
+  const meta = await fetchMeta(page, id, token);
   if (!meta?.name) return null;
 
-  const str = (v: unknown) => (typeof v === "string" ? v : "");
-  let personality = str(meta.personality);
-  let firstMessage = str(meta.first_message);
-
+  const firstMessage = str(meta.first_message);
   // A hidden definition takes the MAIN greeting with it, and only that one:
   // first_messages keeps its length and turns entry 0 into null, so the
   // alternates still arrive. Dropping the hole instead of filling it promoted
@@ -308,29 +293,17 @@ export async function fetchJanitorCard(
   // hidden one imported with none at all.
   const list = Array.isArray(meta.first_messages) ? meta.first_messages : [];
   const greetings = list.filter((m): m is string => typeof m === "string");
-  if (!firstMessage && typeof list[0] === "string") firstMessage = greetings[0];
-  const wantPrompt = !personality && meta.allow_proxy !== false;
-  if (!firstMessage || wantPrompt) {
-    const recovered = await recoverViaChat(page, id, token, wantPrompt);
-    if (!firstMessage && recovered.greeting) firstMessage = recovered.greeting;
-    if (wantPrompt && recovered.prompt) {
-      const inner = /<[^>]*Persona>([\s\S]*?)<\/[^>]*Persona>/.exec(
-        recovered.prompt,
-      );
-      personality = (inner?.[1] ?? recovered.prompt)
-        .replace(/<UserPersona>[\s\S]*?<\/UserPersona>/g, "")
-        .trim();
-    }
-  }
+  const head: unknown = list[0];
+  const greeting = firstMessage || (typeof head === "string" ? head : "");
   // Whatever became the greeting is not also an alternate.
-  const alternates = greetings.filter((g) => g !== firstMessage);
+  const alternates = greetings.filter((g) => g !== greeting);
 
   const avatar = await fetchAvatar(
     page,
     typeof meta.avatar === "string" ? meta.avatar : "",
   );
 
-  return {
+  const card: UniformCard = {
     source: "janitorai",
     sourceUrl: url.href,
     avatar,
@@ -340,9 +313,9 @@ export async function fetchJanitorCard(
       data: {
         name: meta.name,
         description: str(meta.description),
-        personality,
+        personality: str(meta.personality),
         scenario: str(meta.scenario),
-        first_mes: firstMessage,
+        first_mes: greeting,
         mes_example: str(meta.example_dialogs),
         creator: str(meta.creator_name),
         alternate_greetings: alternates,
@@ -364,4 +337,6 @@ export async function fetchJanitorCard(
     lorebooks: [],
     skipped: [],
   };
+  await completeCard(page, id, token, meta, card);
+  return card;
 }
