@@ -13,6 +13,7 @@ export type UniformEntry = {
   priority: number;
   orderIndex: number;
   matchWholeWords: boolean;
+  // Set for plugin entries, which are lorebook entries carrying a
   // trigger and an add_message action. Optional because no other source sets
   // them: a plain lorebook entry is a system injection that always applies once
   // its keys match.
@@ -58,7 +59,7 @@ export type UniformCard = {
   skipped: SkippedLorebook[];
 };
 
-// every other site treats a persona as private account data.
+// The user's own profile rather than a character.
 export type UniformPersona = {
   name: string;
   description: string;
@@ -97,9 +98,8 @@ export type ImportResult =
       plugin: { name: string; script: string };
     }
   | {
-      // scenarios (a standing instruction block) are both this once mapped, so
-      // they share one kind rather than making the client branch on which site
-      // concept produced it. `promptTemplate` is the finished PromptItem[] JSON
+      // A published PRESET (an ordered prompt block list or a standing
+      // instruction block). `promptTemplate` is the finished PromptItem[] JSON
       // unorouter stores verbatim, so importing is a single row write.
       kind: "preset";
       source: string;

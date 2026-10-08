@@ -115,6 +115,7 @@ export const consecutiveJobFailures = () => failStreak;
 export const consecutiveAttemptFailures = () => attemptFailStreak;
 
 // A list because one URL can hold many items: a Google Docs character book has
+// 29, and chub lorebook pages already carried several
 // that had to be flattened into one result to fit. Single-item sources wrap
 // here rather than in nine adapters, so each adapter stays single-purpose.
 async function runJob(job: queue.Job): Promise<ImportResults> {
@@ -126,7 +127,6 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
   // the first path segment tells them apart.
   if (matchesChubLorebook(url))
     return [await fetchChubLorebook(page!, url, toEntries)];
-  // specific matchers run before the persona one.
   if (png.matchesChub(url)) return [await png.fetchChub(page!, url, toEntries)];
   if (matchesRisu(url)) return [await fetchRisu(page!, url, toEntries)];
   // The only source that returns MANY characters from one URL.
