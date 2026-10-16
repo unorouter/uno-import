@@ -74,7 +74,7 @@ const ATTEMPTS_PER_PAGE = 8;
 // Failures that are the upstream's answer rather than the exit's, so a reroll
 // cannot change them.
 const PERMANENT =
-  /^(datacat: (character not indexed|downloads disabled by creator)|janitorai: (lorebook has no importable|script is empty))/;
+  /^(datacat: (character not indexed|downloads disabled by creator|creator account dormant)|janitorai: (lorebook has no importable|script is empty))/;
 
 let page: PageWithCursor | null = null;
 let newPage: (() => Promise<PageWithCursor>) | null = null;
@@ -152,7 +152,9 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
     // still serves that card to a signed-in session.
     const missing =
       err instanceof Error &&
-      /character not indexed|downloads disabled by creator/.test(err.message);
+      /character not indexed|downloads disabled by creator|creator account dormant/.test(
+        err.message,
+      );
     const id = datacat.characterId(url.href);
     if (!missing || !id || !hasJanitorAuth()) throw err;
     const direct = await fetchJanitorCard(page!, id, url);

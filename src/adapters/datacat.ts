@@ -49,6 +49,7 @@ const FETCH_IN_PAGE = `(async (id) => {
   if (!res.ok) {
     const code = await res.json().then((b) => b && b.code, () => null);
     if (code === "CREATOR_REDIRECT_REQUIRED") return { error: "creator_blocked" };
+    if (code === "ERROR_4152_DELETED") return { error: "creator_dormant" };
     return { error: "character " + res.status };
   }
   const body = await res.json();
@@ -125,6 +126,11 @@ export async function fetchCard(
   // deadline, holding the one browser for 15 minutes per import.
   if (raw?.error === "creator_blocked") {
     throw new Error("datacat: downloads disabled by creator");
+  }
+  // 410 "This creator account is currently dormant": datacat withholds every
+  // card of that creator, while JanitorAI may still serve them.
+  if (raw?.error === "creator_dormant") {
+    throw new Error("datacat: creator account dormant");
   }
   // Keep the page URL for the rest: a failure at identify means the evaluate ran
   // somewhere other than datacat's origin, which is a different bug entirely.
