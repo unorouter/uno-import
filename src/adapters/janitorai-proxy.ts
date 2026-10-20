@@ -16,6 +16,9 @@ const GAP_MS = 2_100;
 const RETRY_429_MS = 6_000;
 // On that bot the set of lines stopped growing after about 20 prompts.
 const QUIET_STOP = 8;
+// The prompt is cut to this budget, entries first: at 50k tokens a 200k
+// character definition filled it and no lorebook entry ever reached the prompt.
+const CONTEXT_TOKENS = 200_000;
 const PROBE_WORDS = 80;
 // Stands in for the importing account's persona name, which JanitorAI writes
 // wherever the definition says {{user}}.
@@ -102,7 +105,7 @@ const setupScript = (id: string, token: string) => `(async () => {
             allow_mobile_nsfw: true, janitor_router_enabled: false,
             text_streaming: false,
             generation_settings: {
-              context_length: 50000, enable_reasoning: false,
+              context_length: ${CONTEXT_TOKENS}, enable_reasoning: false,
               enable_reasoning_chat: false, enable_router_temperature: false,
               enable_short_responses: false, max_new_token: 0,
               prefill_enabled: false, prefill_text: "", temperature: 1,
@@ -372,6 +375,9 @@ export async function recoverViaProxy(
           `window.__unoProxy.gen(${JSON.stringify(pick.join(", ") || "...")})`,
         ),
       );
+      console.log(
+        `[proxy] ${id} probe ${prompts.length + 1}: status ${got.status}, prompt ${got.prompt?.length ?? 0} chars`,
+      );
       if (got.status === 429) {
         if (++limited > 3) break;
         await sleep(RETRY_429_MS);
@@ -394,5 +400,9 @@ export async function recoverViaProxy(
   } finally {
     await page.evaluate(`window.__unoProxy.drop()`).catch(() => {});
   }
-  return { greeting, ...analyse(prompts) };
+  const result = analyse(prompts);
+  console.log(
+    `[proxy] ${id} done: ${prompts.length} prompts, ${result.entries.length} entries`,
+  );
+  return { greeting, ...result };
 }
