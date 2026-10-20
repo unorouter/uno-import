@@ -16,6 +16,9 @@ const GAP_MS = 2_100;
 const RETRY_429_MS = 6_000;
 // On that bot the set of lines stopped growing after about 20 prompts.
 const QUIET_STOP = 8;
+// JanitorAI cuts the prompt to this many tokens, example dialogs first: at 50k a
+// card with a 200k character definition lost its whole example dialogs block.
+const CONTEXT_TOKENS = 1_000_000;
 
 const PROBE_WORDS = 80;
 // Stands in for the importing account's persona name, which JanitorAI writes
@@ -103,7 +106,7 @@ const setupScript = (id: string, token: string) => `(async () => {
             allow_mobile_nsfw: true, janitor_router_enabled: false,
             text_streaming: false,
             generation_settings: {
-              context_length: 50000, enable_reasoning: false,
+              context_length: ${CONTEXT_TOKENS}, enable_reasoning: false,
               enable_reasoning_chat: false, enable_router_temperature: false,
               enable_short_responses: false, max_new_token: 0,
               prefill_enabled: false, prefill_text: "", temperature: 1,
@@ -310,7 +313,7 @@ export function analyse(prompts: string[], known?: string) {
     const knownText = norm(known);
     const always = (l: Line) => {
       const t = l.text.trim();
-      if (l.tag || !t || !stable(t)) return false;
+      if (l.tag || !t || l.region === "examples" || !stable(t)) return false;
       const k = norm(t);
       return k.length >= 20 && !knownText.includes(k);
     };
