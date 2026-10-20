@@ -238,6 +238,17 @@ async function completeCard(
       str(data.first_mes),
       str(data.scenario),
     ].join("\n"),
+    known: !str(data.personality)
+      ? undefined
+      : [
+          data.description,
+          data.personality,
+          data.scenario,
+          data.mes_example,
+          data.first_mes,
+        ]
+          .map((v) => str(v))
+          .join("\n"),
   }).catch(() => null);
   if (got?.greeting && !str(data.first_mes)) data.first_mes = got.greeting;
   if (!got || !proxy) return withheld();

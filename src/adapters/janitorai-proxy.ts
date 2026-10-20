@@ -228,7 +228,17 @@ export function keysFor(content: string): string[] {
 type Candidate = { content: string; seen: number };
 
 // Pure, so it can be checked against saved prompts without a browser.
-export function analyse(prompts: string[]) {
+const norm = (t: string) =>
+  t
+    .replace(/\{\{[^}]*\}\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+// `known` is the definition from another source. Without it a line present in
+// every probe is indistinguishable from the definition, and a card whose
+// entries all fire on every message recovers none of them.
+export function analyse(prompts: string[], known?: string) {
   const parsed = prompts.map(linesOf);
   const n = parsed.length;
   const presence = new Map<string, Set<number>>();
@@ -298,6 +308,34 @@ export function analyse(prompts: string[]) {
     }
   }
 
+  if (known && n > 0) {
+    const knownText = norm(known);
+    const always = (l: Line) => {
+      const t = l.text.trim();
+      if (l.tag || !t || !stable(t)) return false;
+      const k = norm(t);
+      return k.length >= 20 && !knownText.includes(k);
+    };
+    const lines = parsed[0]!;
+    for (let i = 0; i < lines.length; i++) {
+      if (!always(lines[i]!)) continue;
+      let end = i;
+      while (
+        end + 1 < lines.length &&
+        !lines[end + 1]!.tag &&
+        (always(lines[end + 1]!) || !lines[end + 1]!.text.trim())
+      )
+        end++;
+      const content = lines
+        .slice(i, end + 1)
+        .map((l) => l.text)
+        .join("\n")
+        .trim();
+      found.push({ content, seen: n });
+      i = end;
+    }
+  }
+
   // Keep the fullest copy of each entry: a group of shared lines yields a
   // fragment of a real entry, and a random macro yields one variant per pick.
   found.sort((a, b) => b.content.length - a.content.length);
@@ -350,7 +388,7 @@ export async function recoverViaProxy(
   page: PageWithCursor,
   id: string,
   token: string,
-  opts: { probes: number; seedText: string },
+  opts: { probes: number; seedText: string; known?: string },
 ): Promise<ProxyRecovery | null> {
   const raw: unknown = await page.evaluate(setupScript(id, token));
   if (typeof raw !== "string") return null;
@@ -400,7 +438,7 @@ export async function recoverViaProxy(
   } finally {
     await page.evaluate(`window.__unoProxy.drop()`).catch(() => {});
   }
-  const result = analyse(prompts);
+  const result = analyse(prompts, opts.known);
   console.log(
     `[proxy] ${id} done: ${prompts.length} prompts, ${result.entries.length} entries`,
   );
