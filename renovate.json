@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Workflow actions only, pinned by commit SHA. Never a PR: minor, patch and digest bumps merge straight to main in the Monday window; a major waits in the Dependency dashboard issue until its box is ticked. App dependencies are not managed here.",
+  "description": "Workflow actions only, pinned by commit SHA. Never a PR: minor, patch and digest bumps merge straight to main on Mondays; a major waits in the Dependency dashboard issue until its box is ticked. App dependencies are not managed here.",
   "extends": [
     "config:recommended",
     ":semanticCommitsDisabled",
@@ -11,7 +11,7 @@
   ],
   "timezone": "Europe/Berlin",
   "schedule": [
-    "before 6am on monday"
+    "on monday"
   ],
   "ignoreTests": true,
   "automerge": true,
