@@ -317,18 +317,20 @@ export function analyse(prompts: string[], known?: string) {
       const k = norm(t);
       return k.length >= 20 && !knownText.includes(k);
     };
+    // Short lines ("Name: Price", "Personality:") belong to the entry around
+    // them; ending a block there split one profile into a line per entry.
+    const joinable = (l: Line) =>
+      always(l) ||
+      (!l.tag && l.region !== "examples" && norm(l.text).length < 20);
     const lines = parsed[0]!;
     for (let i = 0; i < lines.length; i++) {
       if (!always(lines[i]!)) continue;
+      let start = i;
+      while (start > 0 && joinable(lines[start - 1]!)) start--;
       let end = i;
-      while (
-        end + 1 < lines.length &&
-        !lines[end + 1]!.tag &&
-        (always(lines[end + 1]!) || !lines[end + 1]!.text.trim())
-      )
-        end++;
+      while (end + 1 < lines.length && joinable(lines[end + 1]!)) end++;
       const content = lines
-        .slice(i, end + 1)
+        .slice(start, end + 1)
         .map((l) => l.text)
         .join("\n")
         .trim();
@@ -356,7 +358,7 @@ export function analyse(prompts: string[], known?: string) {
     return {
       keys,
       content: c.content,
-      comment: c.content.split("\n")[0]!.trim().slice(0, 80),
+      comment: keys[0] ?? c.content.split("\n")[0]!.trim().slice(0, 80),
       enabled: true,
       // Without a nameable heading there is nothing to key on, so it fires about
       // as often as it showed up here.
