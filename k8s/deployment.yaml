@@ -180,11 +180,10 @@ spec:
             - name: browser-profile
               mountPath: /profile
           resources:
-            requests: { memory: 512Mi, cpu: 200m }
-            # Chrome grows with every page load a job makes, and a job that
-            # retries is many loads. 2Gi was reached and OOM-killed the API
-            # mid-import, which drops the queue and reads to the user as the
-            # service being down.
+            # The worker restarts chrome past 60% of the limit (src/worker/loop.ts), so
+            # real use stays under about 1.8Gi; the request reserves most of that, since
+            # a 512Mi request on a 3Gi limit is how one node was overpacked into OOM.
+            requests: { memory: 1Gi, cpu: 200m }
             limits: { memory: 3Gi }
           # exec, not httpGet: the kubelet probes the POD IP, and replies to it
           # route back out through the tunnel and never arrive, so an httpGet

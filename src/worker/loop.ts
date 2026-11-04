@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { connect, type PageWithCursor } from "puppeteer-real-browser";
 import * as datacat from "../adapters/datacat";
 import * as png from "../adapters/png-sources";
@@ -76,6 +77,17 @@ const ATTEMPTS_PER_PAGE = 8;
 const PERMANENT =
   /^(datacat: (character not indexed|downloads disabled by creator|creator account dormant)|janitorai: (lorebook has no importable|script is empty))/;
 
+// Swapping tabs alone did not hold memory: on 2026-11-04 the container went from
+// 436MB to its 3Gi limit in an hour of SUCCESSFUL jobs (the swap above only ran
+// on failures) and was OOM-killed five times, dropping the in-memory queue each
+// time. Between jobs the tab is always replaced, and past this share of the
+// cgroup limit Chrome itself is restarted, which also returns its browser-wide
+// caches. A restart costs one JanitorAI re-login, which ensureJanitorLogin does
+// on demand.
+const BROWSER_RESTART_AT = 0.6;
+
+type Browser = Awaited<ReturnType<typeof connect>>["browser"];
+let browser: Browser | null = null;
 let page: PageWithCursor | null = null;
 let newPage: (() => Promise<PageWithCursor>) | null = null;
 let ready = false;
@@ -184,7 +196,19 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
   return [card];
 }
 
-export async function startWorker() {
+// cgroup v2 on Talos; null when unlimited or unreadable, which disables the guard.
+function memoryShare(): number | null {
+  try {
+    const max = readFileSync("/sys/fs/cgroup/memory.max", "utf8").trim();
+    if (max === "max") return null;
+    const current = readFileSync("/sys/fs/cgroup/memory.current", "utf8");
+    return Number(current) / Number(max);
+  } catch {
+    return null;
+  }
+}
+
+async function launch(): Promise<PageWithCursor> {
   // No --remote-debugging-port here: the driver picks its own and connects to
   // it, and forcing one makes that connection ECONNREFUSED. To inspect a running
   // browser, read the port back out of the process instead:
@@ -196,8 +220,9 @@ export async function startWorker() {
   // fail to start at all (the driver's debug port answered ECONNREFUSED and the
   // container crash-looped), so the JanitorAI session is re-established per pod
   // rather than persisted. Revisit only with a profile Chrome will actually open.
-  const { browser, page: p } = await connect({ turnstile: true });
-  registerBrowserForShutdown(browser);
+  const { browser: b, page: p } = await connect({ turnstile: true });
+  browser = b;
+  registerBrowserForShutdown(b);
 
   // Work on our OWN tab. connect() returns chrome's startup tab, and something
   // in the stack keeps steering it elsewhere: caught over CDP sitting on
@@ -205,7 +230,7 @@ export async function startWorker() {
   // page is not touched by that, and the startup tab is left to whatever wants
   // it.
   newPage = async () => {
-    const fresh = ((await browser.newPage()) ?? p) as PageWithCursor;
+    const fresh = ((await b.newPage()) ?? p) as PageWithCursor;
     await fresh.setViewport({ width: 1920, height: 1080 });
     // Confirm datacat's 18+ gate before their scripts run. Its Exit button sets
     // location to disney.com, and the turnstile solver clicks buttons on the
@@ -220,13 +245,41 @@ export async function startWorker() {
     `);
     return fresh;
   };
-  page = await newPage();
+  const fresh = await newPage();
+  page = fresh;
+  return fresh;
+}
+
+async function recycle() {
+  const share = memoryShare();
+  if (share !== null && share > BROWSER_RESTART_AT) {
+    console.warn(
+      `[worker] memory at ${Math.round(share * 100)}% of the limit, restarting chrome`,
+    );
+    try {
+      await browser?.close();
+    } catch {}
+    await launch();
+    return;
+  }
+  if (!newPage) return;
+  try {
+    const stale = page;
+    page = await newPage();
+    await stale?.close();
+  } catch {
+    // a failed swap leaves the old tab in place, which still works
+  }
+}
+
+export async function startWorker() {
+  const first = await launch();
 
   // Probe once, but do NOT roll at startup. Rotating rebuilds gluetun's
   // firewall, and inbound rules go with it, so a pod that rolls on boot is
   // unreachable from the cluster for as long as the search runs and reports
   // itself unhealthy the whole time. Jobs roll on demand instead.
-  ready = await probeExit(page);
+  ready = await probeExit(first);
   if (!ready)
     console.warn(
       "[worker] startup exit is challenged; jobs will roll on demand",
@@ -291,15 +344,7 @@ export async function startWorker() {
         }
         console.warn(`[job] attempt ${attempt} failed: ${lastError}`);
         // Hand the tab's memory back rather than the job's remaining time.
-        if (attempt % ATTEMPTS_PER_PAGE === 0 && newPage) {
-          try {
-            const stale = page;
-            page = await newPage();
-            await stale?.close();
-          } catch {
-            // a failed swap leaves the old tab in place, which still works
-          }
-        }
+        if (attempt % ATTEMPTS_PER_PAGE === 0) await recycle();
         // Move FIRST, then find a usable exit. The probe only proves the exit
         // can reach the open web, not that the TARGET still accepts it, so
         // leaving on a passing probe pinned the loop to one rejected address
@@ -318,6 +363,7 @@ export async function startWorker() {
         await findUsableExit(page!, ROLLS_PER_ATTEMPT);
       }
     }
+    await recycle();
   }
 }
 
