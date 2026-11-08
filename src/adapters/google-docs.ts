@@ -1,4 +1,4 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type {
   ImportResult,
   UniformAsset,
@@ -150,7 +150,7 @@ type Parsed = { error?: string; items?: ParsedItem[]; title?: string };
 const FIELD = /^[A-Z][^:\n]{0,48}:\s*\S/;
 
 export async function fetchGoogleDoc(
-  page: PageWithCursor,
+  page: Page,
   url: URL,
 ): Promise<ImportResult[]> {
   const id = documentId(url.href);

@@ -1,9 +1,10 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type { UniformCard } from "../types/uniform-card";
 import { gotoOrigin } from "../worker/page-tools";
 import { toEntries } from "./entries";
 import { recoverLorebooks } from "./janitorai";
 import { recoverViaProxy } from "./janitorai-proxy";
+import { clickTurnstile } from "../worker/browser";
 
 // JanitorAI serves a card datacat has never crawled, and serves the DEFINITION of
 // a card whose creator hid it, but only to a signed-in session. Both are why an
@@ -24,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // A card page is public; a FAVOURITE is not, so this asks something only a real
 // session can answer. /hampter/subscriptions/plans looked like a login check and
 // is not: it answers 200 to anonymous callers too.
-async function hasSession(page: PageWithCursor): Promise<boolean> {
+async function hasSession(page: Page): Promise<boolean> {
   try {
     const ok: unknown = await page.evaluate(`(async () => {
       if (!/sb-auth-auth-token/.test(document.cookie)) return false;
@@ -41,7 +42,7 @@ async function hasSession(page: PageWithCursor): Promise<boolean> {
 
 // Reads the Supabase access token back out of the split cookie pair. The API
 // wants it as a bearer even though the cookie is already attached.
-async function bearer(page: PageWithCursor): Promise<string | null> {
+async function bearer(page: Page): Promise<string | null> {
   try {
     const tok: unknown = await page.evaluate(`(() => {
       const ck = (n) => document.cookie.split("; ")
@@ -59,9 +60,7 @@ async function bearer(page: PageWithCursor): Promise<string | null> {
   }
 }
 
-export async function ensureJanitorLogin(
-  page: PageWithCursor,
-): Promise<boolean> {
+export async function ensureJanitorLogin(page: Page): Promise<boolean> {
   if (!hasJanitorAuth()) return false;
   if (!page.url().startsWith("https://janitorai.com")) {
     await gotoOrigin(page, "https://janitorai.com/");
@@ -83,14 +82,14 @@ export async function ensureJanitorLogin(
     await put("#email", EMAIL);
     await put("#current-password", PASSWORD);
 
-    // The driver's turnstile solver clicks the widget on its own pages, and the
-    // token is what the auth call is rejected without ("captcha_failed").
+    // The auth call is rejected without the turnstile token ("captcha_failed").
     for (let i = 0; i < 20; i++) {
       await sleep(3000);
       const solved = await page.evaluate(
         `(() => (document.querySelector('[name="cf-turnstile-response"]')?.value || "").length > 0)()`,
       );
       if (solved) break;
+      await clickTurnstile(page).catch(() => false);
     }
 
     for (const b of await page.$$("button")) {
@@ -117,7 +116,7 @@ export async function ensureJanitorLogin(
 // different host. Fetched in the page so the request carries the same clearance
 // as everything else here, and base64 because binary cannot cross page.evaluate.
 async function fetchAvatar(
-  page: PageWithCursor,
+  page: Page,
   avatar: string,
 ): Promise<{ name: string; mimeType: string; base64: string } | undefined> {
   if (!avatar) return undefined;
@@ -173,7 +172,7 @@ type JanitorMeta = {
 };
 
 async function fetchMeta(
-  page: PageWithCursor,
+  page: Page,
   id: string,
   token: string,
 ): Promise<JanitorMeta | null> {
@@ -194,7 +193,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 // Every read endpoint strips a hidden definition and a private lorebook alike,
 // and both survive only in the prompt JanitorAI assembles for a proxy.
 async function completeCard(
-  page: PageWithCursor,
+  page: Page,
   id: string,
   token: string,
   meta: JanitorMeta,
@@ -271,7 +270,7 @@ async function completeCard(
 // datacat never lists some books, and serves a hidden definition as whatever
 // one prompt happened to hold, so a signed-in session completes its card.
 export async function completeFromJanitor(
-  page: PageWithCursor,
+  page: Page,
   id: string,
   card: UniformCard,
 ): Promise<void> {
@@ -285,7 +284,7 @@ export async function completeFromJanitor(
 // Returns null rather than throwing: this is a fallback for what datacat could
 // not serve, and its failure says nothing new about the card.
 export async function fetchJanitorCard(
-  page: PageWithCursor,
+  page: Page,
   id: string,
   url: URL,
 ): Promise<UniformCard | null> {

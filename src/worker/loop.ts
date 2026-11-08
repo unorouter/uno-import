@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { connect, type PageWithCursor } from "puppeteer-real-browser";
+import type { Browser, Page } from "rebrowser-puppeteer-core";
+import { launchBrowser } from "./browser";
 import * as datacat from "../adapters/datacat";
 import * as png from "../adapters/png-sources";
 import {
@@ -86,10 +87,9 @@ const PERMANENT =
 // on demand.
 const BROWSER_RESTART_AT = 0.6;
 
-type Browser = Awaited<ReturnType<typeof connect>>["browser"];
 let browser: Browser | null = null;
-let page: PageWithCursor | null = null;
-let newPage: (() => Promise<PageWithCursor>) | null = null;
+let page: Page | null = null;
+let newPage: (() => Promise<Page>) | null = null;
 let ready = false;
 let failStreak = 0;
 
@@ -208,35 +208,19 @@ function memoryShare(): number | null {
   }
 }
 
-async function launch(): Promise<PageWithCursor> {
-  // No --remote-debugging-port here: the driver picks its own and connects to
-  // it, and forcing one makes that connection ECONNREFUSED. To inspect a running
-  // browser, read the port back out of the process instead:
-  //   kubectl exec deploy/uno-import -c api -- sh -c \
-  //     'P=$(ps aux | grep -o "\-\-remote-debugging-port=[0-9]*" | head -1 | cut -d= -f2); \
-  //      curl -s 127.0.0.1:$P/json | tr "," "\n" | grep url'
-  // That is how the tab was caught sitting on disney.com mid-job.
-  // No userDataDir: pointing chrome-launcher at the mounted profile made Chrome
-  // fail to start at all (the driver's debug port answered ECONNREFUSED and the
-  // container crash-looped), so the JanitorAI session is re-established per pod
-  // rather than persisted. Revisit only with a profile Chrome will actually open.
-  const { browser: b, page: p } = await connect({ turnstile: true });
+async function launch(): Promise<Page> {
+  const b = await launchBrowser();
   browser = b;
   registerBrowserForShutdown(b);
 
-  // Work on our OWN tab. connect() returns chrome's startup tab, and something
-  // in the stack keeps steering it elsewhere: caught over CDP sitting on
-  // disney.com with a recaptcha worker while a job was mid-flight. A dedicated
-  // page is not touched by that, and the startup tab is left to whatever wants
-  // it.
+  // Work on our own tab, not Chrome's startup tab.
   newPage = async () => {
-    const fresh = ((await b.newPage()) ?? p) as PageWithCursor;
-    await fresh.setViewport({ width: 1920, height: 1080 });
+    const fresh = await b.newPage();
     // Confirm datacat's 18+ gate before their scripts run. Its Exit button sets
-    // location to disney.com, and the turnstile solver clicks buttons on the
-    // page, so an unconfirmed overlay walks the tab off the site about a second
-    // after the load succeeds; every relative fetch then 404s from disney.de and
-    // reads like the API rejecting us. This sets the same flag Confirm would.
+    // location to disney.com, so an unconfirmed overlay that gets clicked walks
+    // the tab off the site about a second after the load succeeds; every
+    // relative fetch then 404s from disney.de and reads like the API rejecting
+    // us. This sets the same flag Confirm would.
     await fresh.evaluateOnNewDocument(`
       try {
         localStorage.setItem("age_gate_ok", "true");

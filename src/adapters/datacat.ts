@@ -1,4 +1,4 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type {
   SkippedLorebook,
   UniformCard,
@@ -90,10 +90,7 @@ const FETCH_IN_PAGE = `(async (id) => {
 
 export type FetchResult = { card: UniformCard; retryIds: string[] };
 
-export async function fetchCard(
-  page: PageWithCursor,
-  url: URL,
-): Promise<FetchResult> {
+export async function fetchCard(page: Page, url: URL): Promise<FetchResult> {
   const id = characterId(url.href);
   if (!id) throw new Error("no character id in url");
 

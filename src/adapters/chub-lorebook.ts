@@ -1,4 +1,4 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type { ImportResult, UniformLorebook } from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
 
@@ -38,7 +38,7 @@ type WorldInfo = {
 };
 
 export async function fetchChubLorebook(
-  page: PageWithCursor,
+  page: Page,
   url: URL,
   toEntries: (raw: string) => UniformLorebook["entries"],
 ): Promise<ImportResult> {

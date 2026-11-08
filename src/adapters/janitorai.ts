@@ -1,4 +1,4 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type { ImportResult, UniformCard } from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
 
@@ -55,7 +55,7 @@ export const matchesLorebook = (url: URL) =>
 // response shape serve both imports. An "advanced" script comes back as a
 // plugin instead, since its entries only exist once the code has run.
 export async function fetchLorebook(
-  page: PageWithCursor,
+  page: Page,
   url: URL,
   toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
 ): Promise<ImportResult> {
@@ -94,7 +94,7 @@ export async function fetchLorebook(
 }
 
 async function fetchScripts(
-  page: PageWithCursor,
+  page: Page,
   scriptIds: string[],
 ): Promise<Recovered[]> {
   if (scriptIds.length === 0) return [];
@@ -108,7 +108,7 @@ async function fetchScripts(
 }
 
 export async function recoverLorebooks(
-  page: PageWithCursor,
+  page: Page,
   scriptIds: string[],
   toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
 ): Promise<UniformCard["lorebooks"]> {

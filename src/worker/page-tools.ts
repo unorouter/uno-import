@@ -1,7 +1,8 @@
 // VPN + browser plumbing, ported from disboard-scrape/src/lib/page-tools.ts and
 // backup/2api/glm-proxy. The comments below are incidents, not theory.
 
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
+import { passChallenge } from "./browser";
 
 // gluetun's control server. localhost because every container in the pod shares
 // the VPN network namespace.
@@ -73,7 +74,7 @@ export const rotateVpn = async (): Promise<boolean> => {
 // blocked"), so curl reports 403 on every exit forever while a browser passes:
 // probing with fetch would rotate until it ran out of rolls and conclude the
 // whole provider was down.
-export async function probeExit(page: PageWithCursor): Promise<boolean> {
+export async function probeExit(page: Page): Promise<boolean> {
   // datacat ONLY. janitorai deliberately is not a gate: it answers most exits
   // with a JS challenge that the browser clears per request, so requiring it
   // here rejects exits that work and the loop rotates until it gives up. datacat
@@ -97,7 +98,7 @@ export async function probeExit(page: PageWithCursor): Promise<boolean> {
 // because exhausting the rolls usually means the tunnel itself is down, and
 // spinning on that starves every queued job.
 export async function findUsableExit(
-  page: PageWithCursor,
+  page: Page,
   maxRolls = 10,
 ): Promise<boolean> {
   for (let n = 0; n <= maxRolls; n++) {
@@ -119,7 +120,7 @@ export async function findUsableExit(
 // read exactly like the target rejecting the request. Verifying after goto is
 // not enough, because the drift happens between that check and the evaluate.
 export async function gotoOrigin(
-  page: PageWithCursor,
+  page: Page,
   url: string,
   attempts = 3,
 ): Promise<void> {
@@ -127,6 +128,7 @@ export async function gotoOrigin(
   for (let i = 1; i <= attempts; i++) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      await passChallenge(page);
       // Single-page apps rewrite the URL after boot, so settle before reading it.
       await new Promise((r) => setTimeout(r, 2000));
       if (page.url().startsWith(origin)) return;
@@ -143,7 +145,7 @@ export async function gotoOrigin(
 // ended up, and the failure surfaces as a confusing HTTP status from the site we
 // never actually asked.
 export async function evaluateOn<T>(
-  page: PageWithCursor,
+  page: Page,
   url: string,
   script: string,
 ): Promise<T> {

@@ -1,6 +1,6 @@
 > **Scope:** only things that stop you breaking something or send you down a wrong path for an hour. Not a tour of the code. When a change makes a rule here wrong, fix the rule in the same commit.
 
-Bun + Elysia worker that turns a character-site URL into a uniform card. ONE gluetun VPN, ONE real Chrome, ONE job at a time. Every rule below follows from those three.
+Bun + Elysia worker that turns a character-site URL into a uniform card. ONE gluetun VPN, ONE real Chrome (`rebrowser-puppeteer-core`, headful on Xvfb, profile on the `/profile` volume; puppeteer-real-browser was dropped because sites detect it), ONE job at a time. Every rule below follows from those three.
 
 ## Debugging a job that is not working
 
@@ -10,9 +10,9 @@ Do these in order. Most "the importer is broken" reports die at step 1 or 2.
 
 ```bash
 export KUBECONFIG=~/MEGA/Projects/ai-api/infra/kubeconfig
-P=$(kubectl -n services get pod -l app=uno-import -o jsonpath='{.items[0].metadata.name}')
-kubectl -n services exec "$P" -c vpn -- sh -c 'wget -qO- --timeout=8 http://127.0.0.1:8000/v1/publicip/ip'
-kubectl -n services exec "$P" -c api -- sh -c 'curl -s -o /dev/null -w "%{http_code}\n" -m 20 https://datacat.run/fresh'
+P=$(kubectl -n uno-import get pod -l app=uno-import -o jsonpath='{.items[0].metadata.name}')
+kubectl -n uno-import exec "$P" -c vpn -- sh -c 'wget -qO- --timeout=8 http://127.0.0.1:8000/v1/publicip/ip'
+kubectl -n uno-import exec "$P" -c api -- sh -c 'curl -s -o /dev/null -w "%{http_code}\n" -m 20 https://datacat.run/fresh'
 ```
 
 `{"public_ip":""}` plus `000` means the tunnel is up but carrying nothing, and EVERY job will fail on "navigation failed" until it is fixed. The container still reports itself Running, and `/api/health` still answers 200, so nothing else tells you.
@@ -20,25 +20,24 @@ kubectl -n services exec "$P" -c api -- sh -c 'curl -s -o /dev/null -w "%{http_c
 ### 2. Is the queue starved rather than broken?
 
 ```bash
-kubectl -n services exec "$P" -c api -- sh -c 'curl -s localhost:4000/api/health'
-kubectl -n services logs "$P" -c api --tail 20
+kubectl -n uno-import exec "$P" -c api -- sh -c 'curl -s localhost:4000/api/health'
+kubectl -n uno-import logs "$P" -c api --tail 20
 ```
 
 A job stuck at `queued` for minutes is usually waiting, not hung: one browser, serial. Check whether the character ids in the log are the ones you submitted. If they are not, you are behind someone else's job.
 
 ### 3. Drive the live browser over CDP
 
-The port is chosen by the driver, so read it back out of the process:
+Chrome is launched with `--remote-debugging-port=0`, so the real port is in the profile's `DevToolsActivePort`:
 
 ```bash
-kubectl -n services exec "$P" -c api -- sh -c \
-  'PORT=$(ps aux | grep -o "\-\-remote-debugging-port=[0-9]*" | head -1 | cut -d= -f2); \
-   curl -s 127.0.0.1:$PORT/json | tr "," "\n" | grep url'
+kubectl -n uno-import exec "$P" -c api -- sh -c \
+  'PORT=$(head -1 /profile/DevToolsActivePort); curl -s 127.0.0.1:$PORT/json | tr "," "\n" | grep url'
 ```
 
 Then copy a script in and run it against that port to reproduce what the adapter does (`fetch` from inside the page, same origin, same clearance). This is the only way to tell "datacat rejected us" apart from "our own page died".
 
-**`Inspected target navigated or closed` IS the bug, not a CDP quirk.** It means the tab moved under the evaluate, which is the same cause as `Runtime.evaluate timed out` in the job log: datacat's 18+ gate sets `location` to disney.com about a second after load, and the turnstile solver clicks it. `evaluateOnNewDocument` pre-sets `age_gate_ok` to stop that; if these errors return, check that flag is still the one the site reads.
+**`Inspected target navigated or closed` IS the bug, not a CDP quirk.** It means the tab moved under the evaluate, which is the same cause as `Runtime.evaluate timed out` in the job log: datacat's 18+ gate sets `location` to disney.com about a second after load when its Exit button gets clicked. `evaluateOnNewDocument` pre-sets `age_gate_ok` to stop that; if these errors return, check that flag is still the one the site reads.
 
 ## Traps that cost real time
 

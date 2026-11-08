@@ -1,4 +1,4 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type { UniformEntry } from "../types/uniform-card";
 
 // In proxy mode /generateAlpha hands the assembled prompt back to its caller
@@ -388,7 +388,7 @@ export function analyse(prompts: string[], known?: string) {
 }
 
 export async function recoverViaProxy(
-  page: PageWithCursor,
+  page: Page,
   id: string,
   token: string,
   opts: { probes: number; seedText: string; known?: string },

@@ -1,4 +1,4 @@
-import type { PageWithCursor } from "puppeteer-real-browser";
+import type { Page } from "rebrowser-puppeteer-core";
 import type { UniformCard } from "../types/uniform-card";
 import { gotoOrigin } from "../worker/page-tools";
 
@@ -43,7 +43,7 @@ function cardFromPng(png: Buffer): Record<string, unknown> {
 }
 
 async function fetchPngCard(
-  page: PageWithCursor,
+  page: Page,
   origin: string,
   pngUrl: string,
   source: string,
@@ -87,7 +87,7 @@ const FETCH_CHUB_LORE_IN_PAGE = `(async (path) => {
 })`;
 
 export async function fetchChub(
-  page: PageWithCursor,
+  page: Page,
   url: URL,
   toEntries: (raw: string) => UniformCard["lorebooks"][number]["entries"],
 ): Promise<UniformCard> {
