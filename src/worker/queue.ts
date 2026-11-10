@@ -34,6 +34,8 @@ const STUCK_TTL_MS = 20 * 60_000;
 // hang, and the user needs an error they can act on.
 const QUEUED_TTL_MS = 5 * 60_000;
 
+// Who imported what: without these lines a fetch abused through a source's data
+// left no trace (2026-11-10).
 export function submit(url: string, caller: string): Job {
   const job: Job = {
     id: crypto.randomUUID(),
@@ -44,6 +46,8 @@ export function submit(url: string, caller: string): Job {
   };
   jobs.set(job.id, job);
   pending.push(job.id);
+  const u = new URL(url);
+  console.log(`[job] ${job.id} submit ${u.host}${u.pathname} from ${caller}`);
   return job;
 }
 
@@ -73,12 +77,14 @@ export function finish(job: Job, result: ImportResults) {
   job.status = "done";
   job.result = result;
   job.finishedAt = Date.now();
+  console.log(`[job] ${job.id} done`);
 }
 
 export function fail(job: Job, error: string) {
   job.status = "failed";
   job.error = error;
   job.finishedAt = Date.now();
+  console.log(`[job] ${job.id} failed: ${error.slice(0, 200)}`);
 }
 
 // One caller may not fill the queue on everyone else's behalf. Counted over
