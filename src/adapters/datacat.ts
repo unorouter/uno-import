@@ -1,4 +1,5 @@
 import type { Page } from "rebrowser-puppeteer-core";
+import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type {
   SkippedLorebook,
   UniformCard,
@@ -33,6 +34,7 @@ type Script = {
 // fails: no response carries an Access-Control-Allow-Origin, and the origin
 // challenges datacenter IPs.
 const FETCH_IN_PAGE = `(async (id) => {
+  const readAsset = ${READ_ASSET_IN_PAGE};
   const rand = (n) => crypto.getRandomValues(new Uint8Array(n))
     .reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
   const auth = await fetch("/api/liberator/identify", {
@@ -61,21 +63,8 @@ const FETCH_IN_PAGE = `(async (id) => {
     const src = /^https?:/.test(avatarUrl)
       ? avatarUrl
       : "https://ella.janitorai.com/bot-avatars/" + avatarUrl;
-    try {
-      const r = await fetch(src);
-      if (r.ok) {
-        const buf = new Uint8Array(await r.arrayBuffer());
-        let bin = "";
-        for (let i = 0; i < buf.length; i += 8192) {
-          bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
-        }
-        avatar = {
-          name: "avatar",
-          mimeType: r.headers.get("content-type") || "image/webp",
-          base64: btoa(bin),
-        };
-      }
-    } catch (e) {}
+    const got = await readAsset(src, "image/webp");
+    if (got) avatar = { name: "avatar", ...got };
   }
   return {
     avatar,

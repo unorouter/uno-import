@@ -1,4 +1,5 @@
 import type { Page } from "rebrowser-puppeteer-core";
+import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type {
   ImportResult,
   UniformAsset,
@@ -124,21 +125,10 @@ const PARSE_IN_PAGE = `(async (id) => {
 
 // Assets are a second fetch each and only the portrait is worth carrying, so
 // this takes the first image per item. Base64 because binary cannot cross
-// page.evaluate, chunked because a spread of a megabyte-long array overflows.
+// page.evaluate. No credentials: the docsz image URLs carry their own key.
 const FETCH_IMAGE_IN_PAGE = `(async (src) => {
-  try {
-    const r = await fetch(src, { credentials: "include" });
-    if (!r.ok) return null;
-    const buf = new Uint8Array(await r.arrayBuffer());
-    let bin = "";
-    for (let i = 0; i < buf.length; i += 8192) {
-      bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
-    }
-    return JSON.stringify({
-      mimeType: r.headers.get("content-type") || "image/png",
-      base64: btoa(bin),
-    });
-  } catch (e) { return null; }
+  const got = await (${READ_ASSET_IN_PAGE})(src, "image/png");
+  return got && JSON.stringify(got);
 })`;
 
 type ParsedItem = { title: string; lines: string[]; images: string[] };

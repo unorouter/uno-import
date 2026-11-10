@@ -4,6 +4,7 @@ import type {
   UniformEntry,
   UniformLorebook,
 } from "../types/uniform-card";
+import { fetchImage } from "./asset-fetch";
 
 // Botbooru answers a plain request from the cluster, so this fetches directly
 // rather than through the browser, as saucepan does.
@@ -28,6 +29,7 @@ const idFromPath = (url: URL): string | null =>
   null;
 
 const TIMEOUT_MS = 20_000;
+const BOTBOORU_HOSTS = ["botbooru.com", "www.botbooru.com"];
 
 const json = async <T>(url: string): Promise<T | null> => {
   const res = await fetch(url, {
@@ -162,22 +164,17 @@ export async function fetchBotbooru(url: URL): Promise<ImportResult> {
   const name = String(post.character_name ?? "").trim();
   if (!name) throw new Error("botbooru: character not found");
 
-  let avatar: UniformAsset | undefined;
-  const src =
-    post.image_link ||
-    (post.filename ? `https://botbooru.com/images/${post.filename}` : "");
-  if (src) {
-    try {
-      const r = await fetch(src, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (r.ok) {
-        avatar = {
-          name: "avatar",
-          mimeType: r.headers.get("content-type") || "image/png",
-          base64: Buffer.from(await r.arrayBuffer()).toString("base64"),
-        };
-      }
-    } catch {}
-  }
+  // The 1600px preview, not the card PNG: the PNG carries the whole card and
+  // often passes the asset size cap. `image_link` is an uploader-set reference
+  // URL, used only when it stays on their host.
+  const src = post.filename
+    ? `https://botbooru.com/images/preview/1600/${encodeURIComponent(post.filename)}`
+    : (post.image_link ?? "");
+  const image = src ? await fetchImage(src, BOTBOORU_HOSTS) : undefined;
+  const avatar: UniformAsset | undefined = image && {
+    name: "avatar",
+    ...image,
+  };
 
   const lorebooks: UniformLorebook[] = [];
   if (post.lorebook_json) {

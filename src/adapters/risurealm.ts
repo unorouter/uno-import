@@ -1,4 +1,5 @@
 import type { Page } from "rebrowser-puppeteer-core";
+import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type { ImportResult, UniformLorebook } from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
 
@@ -32,6 +33,7 @@ const characterId = (input: string) =>
 const MAX_ASSETS = 6;
 
 const FETCH_IN_PAGE = `(async (id, maxAssets) => {
+  const readAsset = ${READ_ASSET_IN_PAGE};
   const res = await fetch(
     "https://realm.risuai.net/api/v1/download/json-v3/" + id + "?non_commercial=true",
     { headers: { accept: "application/json" } },
@@ -50,20 +52,8 @@ const FETCH_IN_PAGE = `(async (id, maxAssets) => {
       ? "https://sv.risuai.xyz/rs/" + uri.slice("risustored:".length)
       : /^https?:/.test(uri) ? uri : null;
     if (!src) continue;
-    try {
-      const r = await fetch(src);
-      if (!r.ok) continue;
-      const buf = new Uint8Array(await r.arrayBuffer());
-      let bin = "";
-      for (let i = 0; i < buf.length; i += 8192) {
-        bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
-      }
-      out.push({
-        name: String(a?.name || "asset"),
-        mimeType: r.headers.get("content-type") || "image/png",
-        base64: btoa(bin),
-      });
-    } catch (e) {}
+    const got = await readAsset(src, "image/png");
+    if (got) out.push({ name: String(a?.name || "asset"), ...got });
   }
   return { card, assets: out };
 })`;
