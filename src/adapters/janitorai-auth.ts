@@ -3,7 +3,7 @@ import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type { UniformCard } from "../types/uniform-card";
 import { gotoOrigin } from "../worker/page-tools";
 import { toEntries } from "./entries";
-import { recoverLorebooks } from "./janitorai";
+import { fetchAdvancedScripts, recoverLorebooks } from "./janitorai";
 import { recoverViaProxy } from "./janitorai-proxy";
 import { clickTurnstile } from "../worker/browser";
 
@@ -194,6 +194,13 @@ async function completeCard(
       ? [{ id: s.id, title: s.title || "Untitled" }]
       : [],
   );
+  const scriptIds = (meta.scripts ?? []).flatMap((s) =>
+    s.type !== "lorebook" && s.id ? [s.id] : [],
+  );
+  if (scriptIds.length > 0) {
+    const plugins = await fetchAdvancedScripts(page, scriptIds).catch(() => []);
+    if (plugins.length > 0) card.plugins = plugins;
+  }
   const have = new Set(card.lorebooks.map((b) => b.name));
   let missing = books.filter((b) => !have.has(b.title));
   if (missing.length > 0) {

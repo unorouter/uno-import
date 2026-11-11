@@ -107,6 +107,18 @@ async function fetchScripts(
   );
 }
 
+// Advanced scripts are programs, so they travel verbatim as plugins.
+export async function fetchAdvancedScripts(
+  page: Page,
+  scriptIds: string[],
+): Promise<{ name: string; script: string }[]> {
+  return (await fetchScripts(page, scriptIds)).flatMap((r) =>
+    r.status === 200 && r.script && r.type !== "lorebook"
+      ? [{ name: r.title || "Imported script", script: r.script }]
+      : [],
+  );
+}
+
 export async function recoverLorebooks(
   page: Page,
   scriptIds: string[],
