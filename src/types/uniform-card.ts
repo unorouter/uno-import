@@ -59,7 +59,7 @@ export type UniformCard = {
   skipped: SkippedLorebook[];
   // JanitorAI advanced scripts attached to the character, and the titles of
   // those the author kept private.
-  plugins?: { name: string; script: string }[];
+  plugins?: { name: string; script: string; kind?: "janitor" | "perchance" }[];
   skippedScripts?: string[];
 };
 

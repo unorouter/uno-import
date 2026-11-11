@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fetchPerchance, matchesPerchance } from "../adapters/perchance";
 import type { Browser, Page } from "rebrowser-puppeteer-core";
 import { launchBrowser } from "./browser";
 import * as datacat from "../adapters/datacat";
@@ -146,6 +147,7 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
   if (matchesBotbooruLorebook(url)) return [await fetchBotbooruLorebook(url)];
   if (matchesBotbooru(url)) return [await fetchBotbooru(url)];
   if (matchesCharacterTavern(url)) return [await fetchCharacterTavern(url)];
+  if (matchesPerchance(url)) return [await fetchPerchance(url)];
   if (matchesSaucepanLorebook(url)) return [await fetchSaucepanLorebook(url)];
   if (matchesSaucepan(url)) return [await fetchSaucepan(url)];
   if (matchesSpicychatLorebook(url)) return [await fetchSpicychatLorebook(url)];
