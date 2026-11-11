@@ -111,10 +111,10 @@ async function fetchScripts(
 export async function fetchAdvancedScripts(
   page: Page,
   scriptIds: string[],
-): Promise<{ name: string; script: string }[]> {
+): Promise<{ id: string; name: string; script: string }[]> {
   return (await fetchScripts(page, scriptIds)).flatMap((r) =>
     r.status === 200 && r.script && r.type !== "lorebook"
-      ? [{ name: r.title || "Imported script", script: r.script }]
+      ? [{ id: r.id, name: r.title || "Imported script", script: r.script }]
       : [],
   );
 }

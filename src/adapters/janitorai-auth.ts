@@ -194,12 +194,28 @@ async function completeCard(
       ? [{ id: s.id, title: s.title || "Untitled" }]
       : [],
   );
-  const scriptIds = (meta.scripts ?? []).flatMap((s) =>
-    s.type !== "lorebook" && s.id ? [s.id] : [],
+  const scripts = (meta.scripts ?? []).flatMap((s) =>
+    s.type !== "lorebook" && s.id
+      ? [{ id: s.id, title: s.title || "Untitled" }]
+      : [],
   );
-  if (scriptIds.length > 0) {
-    const plugins = await fetchAdvancedScripts(page, scriptIds).catch(() => []);
-    if (plugins.length > 0) card.plugins = plugins;
+  const fetchedScripts =
+    scripts.length > 0
+      ? await fetchAdvancedScripts(
+          page,
+          scripts.map((s) => s.id),
+        ).catch(() => [])
+      : [];
+  if (fetchedScripts.length > 0) {
+    card.plugins = fetchedScripts.map((p) => ({
+      name: p.name,
+      script: p.script,
+    }));
+  }
+  const gotIds = new Set(fetchedScripts.map((p) => p.id));
+  const privateScripts = scripts.filter((s) => !gotIds.has(s.id));
+  if (privateScripts.length > 0) {
+    card.skippedScripts = privateScripts.map((s) => s.title);
   }
   const have = new Set(card.lorebooks.map((b) => b.name));
   let missing = books.filter((b) => !have.has(b.title));
@@ -214,7 +230,13 @@ async function completeCard(
     missing = missing.filter((b) => !fetched.has(b.title));
   }
   const hidden = !str(meta.personality);
-  if (!hidden && missing.length === 0 && str(data.first_mes)) return;
+  if (
+    !hidden &&
+    missing.length === 0 &&
+    privateScripts.length === 0 &&
+    str(data.first_mes)
+  )
+    return;
 
   const withheld = () => {
     for (const b of missing) {
@@ -227,7 +249,13 @@ async function completeCard(
   // definition withholds, which opening the chat materialises.
   const proxy = meta.allow_proxy !== false;
   const got = await recoverViaProxy(page, id, token, {
-    probes: !proxy ? 1 : missing.length > 0 ? 25 : books.length > 0 ? 8 : 1,
+    probes: !proxy
+      ? 1
+      : missing.length > 0 || privateScripts.length > 0
+        ? 25
+        : books.length > 0
+          ? 8
+          : 1,
     seedText: [
       str(meta.description).replace(/<[^>]+>/g, " "),
       str(data.first_mes),
@@ -252,11 +280,15 @@ async function completeCard(
     if (got.scenario) data.scenario = got.scenario;
     if (got.examples) data.mes_example = got.examples;
   }
-  if (missing.length === 0) return;
+  if (missing.length === 0 && privateScripts.length === 0) return;
   if (got.entries.length === 0) return withheld();
   const [only] = missing;
+  // Private scripts run server side, so only what they write into the prompt
+  // comes back, which lands here alongside any private book's entries.
   const title =
-    missing.length === 1 && only ? only.title : `${str(data.name)} lorebook`;
+    missing.length === 1 && only && privateScripts.length === 0
+      ? only.title
+      : `${str(data.name)} lorebook`;
   // Marked because its keys come from each entry's heading, not the author's.
   card.lorebooks.push({ name: `${title} (recovered)`, entries: got.entries });
   const gone = new Set(missing.map((b) => b.title));

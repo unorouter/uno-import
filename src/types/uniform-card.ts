@@ -57,8 +57,10 @@ export type UniformCard = {
   card: { spec: string; spec_version?: string; data: Record<string, unknown> };
   lorebooks: UniformLorebook[];
   skipped: SkippedLorebook[];
-  // JanitorAI advanced scripts attached to the character.
+  // JanitorAI advanced scripts attached to the character, and the titles of
+  // those the author kept private.
   plugins?: { name: string; script: string }[];
+  skippedScripts?: string[];
 };
 
 // The user's own profile rather than a character.
