@@ -248,6 +248,11 @@ export function keysFor(content: string): string[] {
   // anyone types, and stays keyless.
   const titled = /^([A-Z][\w'’&. -]{1,40}):\s+\S/.exec(head)?.[1];
   if (titled && titled.split(/\s+/).length <= 4) add(titled);
+  if (keys.size > 0) return [...keys];
+
+  // "Yandere characters are initially loving" names its subject first.
+  const lead = /^([A-Z][a-z][\w'’-]{2,})\b/.exec(head)?.[1];
+  if (lead) add(lead);
   return [...keys];
 }
 
