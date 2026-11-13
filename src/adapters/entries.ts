@@ -4,12 +4,12 @@ import type { UniformEntry } from "../types/uniform-card";
 // and `minMessages` are in every payload and were non-default in none of them,
 // so they are read and dropped rather than modelled.
 type JanitorEntry = {
-  key?: string[];
-  keysecondary?: string[];
+  key?: unknown;
+  keysecondary?: unknown;
   // CCv2 spelling, used by chub and by any character_book embedded in a card.
   // JanitorAI uses the singular; both otherwise carry the same fields.
-  keys?: string[];
-  secondary_keys?: string[];
+  keys?: unknown;
+  secondary_keys?: unknown;
   content?: string;
   comment?: string;
   name?: string;
@@ -20,6 +20,24 @@ type JanitorEntry = {
   insertion_order?: number;
   matchWholeWords?: boolean;
 };
+
+// Some books store a key list as one comma separated string.
+function keyList(...sources: unknown[]): string[] {
+  for (const v of sources) {
+    const list = Array.isArray(v)
+      ? v
+      : typeof v === "string"
+        ? v.split(",")
+        : null;
+    if (!list) continue;
+    const keys = list
+      .filter((k): k is string => typeof k === "string")
+      .map((k) => k.trim())
+      .filter(Boolean);
+    if (keys.length > 0) return keys;
+  }
+  return [];
+}
 
 // Shared by both adapters: datacat serves this array inline, JanitorAI serves the
 // same array from /hampter/script/{id}, so one parser covers both.
@@ -34,12 +52,8 @@ export function toEntries(raw: string): UniformEntry[] {
 
   const out: UniformEntry[] = [];
   parsed.forEach((e: JanitorEntry, i) => {
-    const keyList = Array.isArray(e.key)
-      ? e.key
-      : Array.isArray(e.keys)
-        ? e.keys
-        : [];
-    const keys = keyList.filter(Boolean);
+    const keys = keyList(e.key, e.keys);
+    const secondary = keyList(e.keysecondary, e.secondary_keys);
     // A keyless entry never matches unless it is always-on, so it would import
     // as dead weight.
     if (!e.content) return;
@@ -47,11 +61,7 @@ export function toEntries(raw: string): UniformEntry[] {
 
     out.push({
       keys,
-      secondaryKeys: e.keysecondary?.length
-        ? e.keysecondary
-        : e.secondary_keys?.length
-          ? e.secondary_keys
-          : undefined,
+      secondaryKeys: secondary.length > 0 ? secondary : undefined,
       content: e.content,
       comment: e.comment || e.name || undefined,
       enabled: e.enabled !== false,
