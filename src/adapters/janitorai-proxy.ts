@@ -161,12 +161,37 @@ const STOP = new Set(
   ),
 );
 
+// Entry keys are often plain words ("yandere", "jealous"), not names: probing
+// with names alone left a card's two private books silent on every prompt.
+const COMMON = new Set(
+  "about after again also always another around because been before being between both came come could does doing down each even every first from going good have here into just know like little look made make many maybe more most much must need never only other over really said same should since some still such take than that their them then there these they thing think this those though through time very want were what when where which while will with without would your yours".split(
+    " ",
+  ),
+);
+
+const GENERIC_PROBES =
+  "yandere tsundere kuudere dandere deredere himedere jealous jealousy obsessed possessive love kiss hug blush angry sad cry happy scared fear lonely flirt date confess secret lie trust betray fight hurt wound blood heal magic spell power curse sword weapon armor battle war enemy friend rival family mother father sister brother child school class teacher student work job money house home room bed bath kitchen city village forest castle shop tavern night morning dream memory past future name age appearance hair eyes body outfit clothes personality history rules status level quest mission skill race".split(
+    " ",
+  );
+
 function harvest(text: string, into: Set<string>) {
   for (const m of text.matchAll(
     /\b[A-Z][a-zA-Z'’]{2,}(?:[ -][A-Z][a-zA-Z'’]{2,}){0,2}\b/g,
   )) {
     if (!STOP.has(m[0])) into.add(m[0]);
   }
+  for (const m of text.toLowerCase().matchAll(/\b[a-z]{4,}\b/g)) {
+    if (!COMMON.has(m[0])) into.add(m[0]);
+  }
+}
+
+function sample(pool: string[], n: number): string[] {
+  const a = [...pool];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a.slice(0, n);
 }
 
 // A heading names what the entry is about, and that name is what a reader types
@@ -400,7 +425,7 @@ export async function recoverViaProxy(
 
   const prompts: string[] = [];
   try {
-    const words = new Set<string>();
+    const words = new Set<string>(GENERIC_PROBES);
     harvest(opts.seedText, words);
     if (greeting) harvest(greeting, words);
     const lines = new Set<string>();
@@ -408,9 +433,7 @@ export async function recoverViaProxy(
     let limited = 0;
     while (prompts.length < opts.probes && quiet < QUIET_STOP) {
       if (prompts.length > 0 || limited > 0) await sleep(GAP_MS);
-      const pick = [...words]
-        .filter(() => Math.random() < 0.35)
-        .slice(0, PROBE_WORDS);
+      const pick = sample([...words], PROBE_WORDS);
       const got = readGen(
         await page.evaluate(
           `window.__unoProxy.gen(${JSON.stringify(pick.join(", ") || "...")})`,

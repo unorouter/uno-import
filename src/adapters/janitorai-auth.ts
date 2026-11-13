@@ -257,6 +257,8 @@ async function completeCard(
           ? 8
           : 1,
     seedText: [
+      ...missing.map((b) => b.title),
+      ...privateScripts.map((s) => s.title),
       str(meta.description).replace(/<[^>]+>/g, " "),
       str(data.first_mes),
       str(data.scenario),
