@@ -160,17 +160,15 @@ async function runJob(job: queue.Job): Promise<ImportResults> {
   } catch (err) {
     // datacat only knows what it has crawled, so a character published recently
     // or never indexed 404s there while JanitorAI serves it fine. Ask the source
-    // directly before giving up, which needs a signed-in session because a card
-    // like this is usually the explicit kind that answers 401 to anonymous.
-    // A creator block is datacat's own policy, not the source's: JanitorAI
-    // still serves that card to a signed-in session.
+    // directly before giving up; it signs in only for a card that answers 401
+    // to anonymous. A creator block is datacat's own policy, not the source's.
     const missing =
       err instanceof Error &&
       /character not indexed|downloads disabled by creator|creator account dormant/.test(
         err.message,
       );
     const id = datacat.characterId(url.href);
-    if (!missing || !id || !hasJanitorAuth()) throw err;
+    if (!missing || !id) throw err;
     const direct = await fetchJanitorCard(page!, id, url);
     // Rethrow datacat's error rather than inventing one: falling back is a bonus
     // path, and its failure says nothing new about the card.

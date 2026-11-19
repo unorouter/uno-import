@@ -164,13 +164,14 @@ type JanitorMeta = {
 async function fetchMeta(
   page: Page,
   id: string,
-  token: string,
+  token: string | null,
 ): Promise<JanitorMeta | null> {
   const raw: unknown = await page.evaluate(`(async () => {
+    const token = ${JSON.stringify(token)};
     const r = await fetch("/hampter/characters/" + ${JSON.stringify(id)}, {
       headers: {
         accept: "application/json",
-        authorization: "Bearer " + ${JSON.stringify(token)},
+        ...(token ? { authorization: "Bearer " + token } : {}),
       },
     });
     return r.ok ? await r.json() : null;
@@ -319,12 +320,18 @@ export async function fetchJanitorCard(
   id: string,
   url: URL,
 ): Promise<UniformCard | null> {
-  if (!(await ensureJanitorLogin(page))) return null;
-  const token = await bearer(page);
-  if (!token) return null;
-
-  const meta = await fetchMeta(page, id, token);
-  if (!meta?.name) return null;
+  if (!page.url().startsWith(JANITOR_ORIGIN))
+    await gotoOrigin(page, `${JANITOR_ORIGIN}/`);
+  // Most cards answer anonymously; only the explicit kind needs a session.
+  let token: string | null = null;
+  let meta = await fetchMeta(page, id, null);
+  if (!meta?.name) {
+    if (!(await ensureJanitorLogin(page))) return null;
+    token = await bearer(page);
+    if (!token) return null;
+    meta = await fetchMeta(page, id, token);
+    if (!meta?.name) return null;
+  }
 
   const firstMessage = str(meta.first_message);
   // A hidden definition takes the MAIN greeting with it, and only that one:
@@ -378,6 +385,9 @@ export async function fetchJanitorCard(
     lorebooks: [],
     skipped: [],
   };
-  await completeCard(page, id, token, meta, card);
+  // Recovering a hidden definition or private lorebook goes through the proxy
+  // prompt, which needs a session; without one the public fields still import.
+  if (!token && (await ensureJanitorLogin(page))) token = await bearer(page);
+  if (token) await completeCard(page, id, token, meta, card);
   return card;
 }
