@@ -69,7 +69,9 @@ spec:
       shareProcessNamespace: true
       containers:
         - name: vpn
-          image: qmcgaw/gluetun:v3.40@sha256:e10584de1f82d8999e5e6c3111901d9d56a2eed21151fb96af060f390bbdfba8
+          # The built-in PIA list ships with the image: v3.40's Netherlands servers
+          # were retired by PIA and every handshake to them failed (2026-11-19).
+          image: qmcgaw/gluetun:latest@sha256:659a07992600128046b359406a2259700076a5ec226a289a1ddd626bb9471860
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]

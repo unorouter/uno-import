@@ -46,7 +46,7 @@ Then copy a script in and run it against that port to reproduce what the adapter
 - **gluetun picks a fresh server per restart from ~21k and races its own killswitch.** Without `SERVER_REGIONS` the OUTPUT chain holds an ACCEPT for the PREVIOUS server while OpenVPN dials a new one, so every handshake packet is dropped by our own firewall: no "Initialization Sequence Completed", empty `public_ip`, dead egress, container "healthy". Pin the region.
 - **`SERVER_CITIES` crash-loops the container** on `for iptables: failed cleaning up test rule` before any tunnel is attempted. The region pin already lands on the working block; do not narrow further.
 - **Do not shorten `HEALTH_VPN_DURATION_INITIAL`.** 15s restarts OpenVPN mid-negotiation so it can never finish, which manufactures the outage it was meant to cure.
-- **PIA's Netherlands block is not uniformly healthy.** `195.78.54.x` completes its handshake; `212.102.35.x` and `143.244.41.x` returned `TLS Error: TLS handshake failed` 16 times out of 20 servers with no auth rejection, so credentials are not the cause when you see that.
+- **`TLS Error: TLS handshake failed` on most servers means gluetun's server list is stale, not that PIA is down.** The list ships inside the image: v3.40 still dialed `212.102.35.x`, `143.244.41.x` and `195.78.54.x`, none of which were in PIA's live list on 2026-11-19 (`curl -s https://serverlist.piaservers.net/vpninfo/servers/v6 | head -1`), and imports failed with `no egress`. Compare the dialed IPs (`link remote` in the vpn log) against that list, then bump the gluetun pin to a build whose `gluetun-servers` version carries the current list.
 
 ## Invariants
 
