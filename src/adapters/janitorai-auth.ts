@@ -30,7 +30,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function hasSession(page: Page): Promise<boolean> {
   try {
     const ok: unknown = await page.evaluate(`(async () => {
-      if (!/sb-auth-auth-token/.test(document.cookie)) return false;
+      if (!/(^|; )sb-[a-z0-9-]*auth-token\\.0=/.test(document.cookie)) return false;
       const r = await fetch("/hampter/subscriptions/plans", {
         headers: { accept: "application/json" },
       });
@@ -43,16 +43,19 @@ async function hasSession(page: Page): Promise<boolean> {
 }
 
 // Reads the Supabase access token back out of the split cookie pair. The API
-// wants it as a bearer even though the cookie is already attached.
+// wants it as a bearer even though the cookie is already attached. The name
+// carries the Supabase project ref, which changed with the move to jani.com
+// (sb-auth-auth-token became sb-<ref>-auth-token), so it is matched, not named.
 async function bearer(page: Page): Promise<string | null> {
   try {
     const tok: unknown = await page.evaluate(`(() => {
-      const ck = (n) => document.cookie.split("; ")
-        .find((c) => c.startsWith(n + "="))?.split("=").slice(1).join("=") || "";
+      const parts = document.cookie.split("; ")
+        .map((c) => [c.slice(0, c.indexOf("=")), c.slice(c.indexOf("=") + 1)])
+        .filter(([n]) => /^sb-[a-z0-9-]*auth-token\\.\\d+$/.test(n))
+        .sort(([a], [b]) => Number(a.split(".").pop()) - Number(b.split(".").pop()));
       try {
-        const raw = decodeURIComponent(
-          ck("sb-auth-auth-token.0") + ck("sb-auth-auth-token.1"),
-        ).replace(/^base64-/, "");
+        const raw = decodeURIComponent(parts.map(([, v]) => v).join(""))
+          .replace(/^base64-/, "");
         return JSON.parse(atob(raw)).access_token || null;
       } catch { return null; }
     })()`);
