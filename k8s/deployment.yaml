@@ -117,6 +117,10 @@ spec:
             # the container looked healthy.
             - name: SERVER_REGIONS
               value: "Netherlands"
+            # Newer builds take the port from PIA's server list (8080), which
+            # timed out on every handshake; the strong preset answers on 1197.
+            - name: OPENVPN_ENDPOINT_PORT
+              value: "1197"
             - name: HEALTH_TARGET_ADDRESS
               value: "1.1.1.1:443"
             # Generous on purpose: OpenVPN needs time to finish its handshake,
