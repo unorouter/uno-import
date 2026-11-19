@@ -1,3 +1,4 @@
+import { isJanitorHost, JANITOR_ORIGIN } from "./janitor-host";
 import type { Page } from "rebrowser-puppeteer-core";
 import type { ImportResult, UniformCard } from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
@@ -48,7 +49,7 @@ export const lorebookId = (input: string) =>
   SCRIPT_URL_RE.exec(input)?.[1]?.toLowerCase() ?? null;
 
 export const matchesLorebook = (url: URL) =>
-  /(^|\.)(janitorai\.com|janitor\.ai)$/i.test(url.hostname) &&
+  isJanitorHost(url.hostname) &&
   lorebookId(url.pathname) !== null;
 
 // Returns a card-shaped result carrying only lorebooks, so one job type and one
@@ -101,7 +102,7 @@ async function fetchScripts(
   return (
     (await evaluateOn<Recovered[]>(
       page,
-      "https://janitorai.com/",
+      `${JANITOR_ORIGIN}/`,
       `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
     )) ?? []
   );

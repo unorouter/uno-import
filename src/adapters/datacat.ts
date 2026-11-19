@@ -1,3 +1,4 @@
+import { isJanitorHost, JANITOR_AVATARS } from "./janitor-host";
 import type { Page } from "rebrowser-puppeteer-core";
 import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type {
@@ -12,8 +13,7 @@ const UUID_RE = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
 
 export const matches = (url: URL) =>
   /(^|\.)datacat\.run$/i.test(url.hostname) ||
-  /(^|\.)janitorai\.com$/i.test(url.hostname) ||
-  /(^|\.)janitor\.ai$/i.test(url.hostname);
+  isJanitorHost(url.hostname);
 
 export const characterId = (input: string) =>
   UUID_RE.exec(input)?.[0].toLowerCase() ?? null;
@@ -62,7 +62,7 @@ const FETCH_IN_PAGE = `(async (id) => {
   if (avatarUrl) {
     const src = /^https?:/.test(avatarUrl)
       ? avatarUrl
-      : "https://ella.janitorai.com/bot-avatars/" + avatarUrl;
+      : ${JSON.stringify(JANITOR_AVATARS)} + avatarUrl;
     const got = await readAsset(src, "image/webp");
     if (got) avatar = { name: "avatar", ...got };
   }

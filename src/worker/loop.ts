@@ -134,7 +134,7 @@ export const consecutiveAttemptFailures = () => attemptFailStreak;
 async function runJob(job: queue.Job): Promise<ImportResults> {
   const url = new URL(job.url);
   // A standalone lorebook link, checked before the character adapters: both
-  // live on janitorai.com and only the path tells them apart.
+  // live on the JanitorAI site and only the path tells them apart.
   if (matchesLorebook(url)) return [await fetchLorebook(page!, url, toEntries)];
   // chub /lorebooks/ before the character adapter: both live on chub.ai and only
   // the first path segment tells them apart.

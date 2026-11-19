@@ -1,3 +1,4 @@
+import { JANITOR_AVATARS, JANITOR_ORIGIN } from "./janitor-host";
 import type { Page } from "rebrowser-puppeteer-core";
 import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type { UniformCard } from "../types/uniform-card";
@@ -63,12 +64,12 @@ async function bearer(page: Page): Promise<string | null> {
 
 export async function ensureJanitorLogin(page: Page): Promise<boolean> {
   if (!hasJanitorAuth()) return false;
-  if (!page.url().startsWith("https://janitorai.com")) {
-    await gotoOrigin(page, "https://janitorai.com/");
+  if (!page.url().startsWith(JANITOR_ORIGIN)) {
+    await gotoOrigin(page, `${JANITOR_ORIGIN}/`);
   }
   if (await hasSession(page)) return true;
 
-  await gotoOrigin(page, "https://janitorai.com/login");
+  await gotoOrigin(page, `${JANITOR_ORIGIN}/login`);
   await sleep(8000);
   try {
     // Input.insertText, NOT page.type: typing the email through key events stops
@@ -126,7 +127,7 @@ async function fetchAvatar(
       const a = ${JSON.stringify(avatar)};
       const src = /^https?:/.test(a)
         ? a
-        : "https://ella.janitorai.com/bot-avatars/" + a;
+        : ${JSON.stringify(JANITOR_AVATARS)} + a;
       const got = await (${READ_ASSET_IN_PAGE})(src, "image/webp");
       return got && JSON.stringify({ name: "avatar", ...got });
     })()`);
