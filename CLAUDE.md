@@ -1,74 +1,64 @@
-> **Scope:** only things that stop you breaking something or send you down a wrong path for an hour. Not a tour of the code. When a change makes a rule here wrong, fix the rule in the same commit.
+> Scope is only what stops you breaking something or sends you down a wrong path for an hour. When a change makes a rule here wrong, fix the rule in the same commit.
 
-Bun + Elysia worker that turns a character-site URL into a uniform card. ONE gluetun VPN, ONE real Chrome (`rebrowser-puppeteer-core`, headful on Xvfb, profile on the `/profile` volume; puppeteer-real-browser was dropped because sites detect it), ONE job at a time. Every rule below follows from those three.
+Bun plus Elysia worker that turns a character site URL into a uniform card. ONE gluetun VPN, ONE real Chrome (`rebrowser-puppeteer-core`, headful on Xvfb, profile on the `/profile` volume, puppeteer-real-browser was dropped because sites detect it), ONE job at a time. Every rule below follows from those three.
 
-## Debugging a job that is not working
+## Debugging a job, in order
 
-Do these in order. Most "the importer is broken" reports die at step 1 or 2.
-
-### 1. Is there egress at all?
+1. Egress. `{"public_ip":""}` plus `000` means the tunnel is up but carries nothing, and EVERY job fails with "navigation failed" while the pod looks Running and `/api/health` answers 200.
 
 ```bash
-export KUBECONFIG=~/MEGA/Projects/ai-api/infra/kubeconfig
+export KUBECONFIG=~/.kube/teleport-unorouter.yaml
 P=$(kubectl -n uno-import get pod -l app=uno-import -o jsonpath='{.items[0].metadata.name}')
 kubectl -n uno-import exec "$P" -c vpn -- sh -c 'wget -qO- --timeout=8 http://127.0.0.1:8000/v1/publicip/ip'
 kubectl -n uno-import exec "$P" -c api -- sh -c 'curl -s -o /dev/null -w "%{http_code}\n" -m 20 https://datacat.run/fresh'
 ```
 
-`{"public_ip":""}` plus `000` means the tunnel is up but carrying nothing, and EVERY job will fail on "navigation failed" until it is fixed. The container still reports itself Running, and `/api/health` still answers 200, so nothing else tells you.
-
-### 2. Is the queue starved rather than broken?
+2. Starved, not broken. A job `queued` for minutes is usually behind someone else's job. Compare the character ids in the log with yours.
 
 ```bash
 kubectl -n uno-import exec "$P" -c api -- sh -c 'curl -s localhost:4000/api/health'
 kubectl -n uno-import logs "$P" -c api --tail 20
 ```
 
-A job stuck at `queued` for minutes is usually waiting, not hung: one browser, serial. Check whether the character ids in the log are the ones you submitted. If they are not, you are behind someone else's job.
-
-### 3. Drive the live browser over CDP
-
-Chrome is launched with `--remote-debugging-port=0`, so the real port is in the profile's `DevToolsActivePort`:
+3. Drive the live browser. The CDP port is in the profile's `DevToolsActivePort`. Run an in-page `fetch` there to tell "datacat rejected us" from "our own page died".
 
 ```bash
 kubectl -n uno-import exec "$P" -c api -- sh -c \
   'PORT=$(head -1 /profile/DevToolsActivePort); curl -s 127.0.0.1:$PORT/json | tr "," "\n" | grep url'
 ```
 
-Then copy a script in and run it against that port to reproduce what the adapter does (`fetch` from inside the page, same origin, same clearance). This is the only way to tell "datacat rejected us" apart from "our own page died".
+`Inspected target navigated or closed` and `Runtime.evaluate timed out` ARE the bug. datacat's 18+ gate navigates the tab away when its Exit button is clicked. `evaluateOnNewDocument` presets `age_gate_ok` to stop it. If these errors return, check the site still reads that flag.
 
-**`Inspected target navigated or closed` IS the bug, not a CDP quirk.** It means the tab moved under the evaluate, which is the same cause as `Runtime.evaluate timed out` in the job log: datacat's 18+ gate sets `location` to disney.com about a second after load when its Exit button gets clicked. `evaluateOnNewDocument` pre-sets `age_gate_ok` to stop that; if these errors return, check that flag is still the one the site reads.
+## Traps
 
-## Traps that cost real time
-
-- **`datacat: not_found` is TRANSIENT.** The same character id answers 404 on one exit and 200 on another, verified by hand. Do NOT add it to `PERMANENT`: that fails recoverable jobs instantly. The page loading at `datacat.run/characters/janitor/<id>` proves nothing either, since the API is a separate path.
-- **The URL in a `not_found` error is the PAGE the evaluate ran on, not the API path that 404d.** Reading it as the request target sends you looking for a route that was never called.
-- **Do not shorten `HEALTH_VPN_DURATION_INITIAL`.** 15s restarts OpenVPN mid-negotiation so it can never finish, which manufactures the outage it was meant to cure.
-- **gluetun dials PIA through its `custom` provider, not its PIA provider.** The PIA provider dials from a server list hardcoded in the image, which went stale twice in a week: every Netherlands server it knew (212.102.35.x, 143.244.41.x, 195.78.54.x on 2026-11-19, then 158.173.x on 2026-11-25, newest image included) was retired, OpenVPN logged `TLS Error: TLS handshake failed` on each, and imports failed with `no egress`. `start.sh` in the `uno-import-pia` ConfigMap resolves `nl-amsterdam.privacy.network` on every container start and writes that IP into PIA's own `netherlands.ovpn` (the custom provider rejects a hostname on the `remote` line). If handshakes fail again, check the hostname still resolves and refresh the config from `https://www.privateinternetaccess.com/openvpn/openvpn-strong.zip`. A rotate (`PUT /v1/vpn/status`) reconnects to the server picked at container start.
+- `datacat: not_found` is TRANSIENT (404 on one exit, 200 on another). Never add it to `PERMANENT`, that fails recoverable jobs instantly. The character page loading proves nothing, the API is a separate path.
+- The URL in a `not_found` error is the PAGE the evaluate ran on, not the API path that 404d.
+- Never shorten `HEALTH_VPN_DURATION_INITIAL`. 15s restarts OpenVPN mid negotiation and manufactures the outage.
+- gluetun dials PIA through its `custom` provider, not the PIA provider, whose hardcoded server list went stale twice in November 2026 (`TLS handshake failed`, then `no egress`). `start.sh` in the `uno-import-pia` ConfigMap resolves `nl-amsterdam.privacy.network` on every start and writes the IP into `netherlands.ovpn` (custom rejects a hostname on `remote`). If handshakes fail, check the hostname resolves and refresh from `https://www.privateinternetaccess.com/openvpn/openvpn-strong.zip`. A rotate (`PUT /v1/vpn/status`) reuses the server picked at container start.
 
 ## Invariants
 
-- **`/api/health` is READINESS, `/api/health/live` is LIVENESS, and they must stay different.** Readiness answers 200 on a challenged exit on purpose: failing it pulls the pod out of the Service, so it stops accepting the very jobs that would prove egress works. Liveness 503s after `DEAD_AFTER_CONSECUTIVE_JOB_FAILURES` whole-job failures, which is what lets the kubelet restart a tunnel that is up but carrying nothing. A single endpoint serving both let a total outage run with the probe green.
-- **The tab is replaced after EVERY job and Chrome restarts past `BROWSER_RESTART_AT` (60%) of the cgroup limit, between jobs.** One reused tab grew from 436MB to the 3Gi limit in an hour of successful jobs and OOM-killed the container five times on 2026-11-04, dropping the in-memory queue each time. A restart costs one JanitorAI re-login, which `ensureJanitorLogin` does on demand.
-- **Only deadline-exhausted jobs increment `failStreak`.** A permanent upstream verdict (private card, deleted card) says nothing about our egress, and counting it would restart a healthy pod because several users in a row imported missing cards.
-- **The job deadline is conditional on `queueDepth()`.** One browser means a 15-minute retry holds every other caller behind it, and the per-user cap does not help because the queue in front of you is other people. Alone gets the long deadline; with company, `BUSY_JOB_DEADLINE_MS`, and the failure is tagged `busy:` so the client can say "try again" rather than "this card is missing".
-- **Health/debug routes are NOT exempt from the API token** (`/api/health` and `/api/health/live` aside, which the kubelet probes tokenless). The OpenAI-shaped echo routes record prompt text.
-- **The tunnel rule in `infra/cloudflared` routes only `/api/jobs*` and `/openapi/*`.** Everything else on `cards.unorouter.com` is a deliberate 404. Adding a route there makes it internet-reachable, so gate it first.
+- `/api/health` is READINESS, `/api/health/live` is LIVENESS, and they must stay different. Readiness stays 200 on a challenged exit, since failing it would stop the jobs that prove egress works. Liveness 503s after `DEAD_AFTER_CONSECUTIVE_JOB_FAILURES` so the kubelet restarts a dead tunnel. One endpoint for both once let a total outage run with the probe green.
+- The tab is replaced after EVERY job and Chrome restarts between jobs past `BROWSER_RESTART_AT` of the cgroup limit. A reused tab OOM killed the container and dropped the in-memory queue (2026-11-04). A restart costs one JanitorAI relogin via `ensureJanitorLogin`.
+- Only deadline exhausted jobs increment `failStreak`. A permanent upstream verdict (private or deleted card) says nothing about egress.
+- The job deadline depends on `queueDepth()`. Alone gets the long deadline. With others queued it gets `BUSY_JOB_DEADLINE_MS` and the failure is tagged `busy:` so the client says "try again", not "card missing".
+- Health and debug routes are NOT exempt from the API token, except `/api/health` and `/api/health/live` for the kubelet. The echo routes record prompt text.
+- The tunnel rule in `infra/cloudflared` routes only `/api/jobs*` and `/openapi/*` on `cards.unorouter.com`. Everything else is a deliberate 404. Gate a route before adding it there.
 
-## JanitorAI specifics
+## JanitorAI
 
-Characters import through the **datacat** adapter, not `janitorai.ts`, which only handles standalone lorebooks and plugin scripts.
+Characters import through the datacat adapter. `janitorai.ts` only handles standalone lorebooks and plugin scripts.
 
-Two independent creator flags decide what is possible, both readable from the page's `window.mbxM` SSR payload before any fetch:
+Two creator flags, readable from the page's `window.mbxM` SSR payload before any fetch, decide what is possible.
 
-- `showdefinition: false` strips `personality`, `scenario` and `example_dialogs` from EVERY read path (character API, chat API, SSR) while still sending `token_counts` for them. An import of one of these silently produces a character with a name and no personality.
+- `showdefinition: false` strips `personality`, `scenario` and `example_dialogs` from EVERY read path while still sending their `token_counts`. The import silently yields a name with no personality.
 - `allow_proxy: false` means generation never routes anywhere the browser can read.
 
-`showdefinition: false` + `allow_proxy: true` is recoverable: `/generateAlpha` in proxy mode returns the assembled prompt to its own caller. `unorouter/public/janitor-extract.js.txt` does this in the user's browser; the importer does it too (`janitorai-proxy.ts`), through its own signed-in session on the VPN exit. Both flags false is not recoverable by any means we will build.
+`showdefinition: false` with `allow_proxy: true` is recoverable. `/generateAlpha` in proxy mode returns the assembled prompt to its caller. `unorouter/public/janitor-extract.js.txt` does this in the user's browser and `janitorai-proxy.ts` through the importer's own session. Both flags false is not recoverable by anything we will build.
 
-Private lorebooks come back the same way, and the traps are:
+Private lorebooks come back the same way.
 
-- **One prompt is a random draw.** Entries fire by keyword and by chance under a per prompt cap (4 to 20 of 44 on the Tokyo Revengers bot), even for a probe with no keywords. Only many prompts separate the definition (lines in every prompt) from entries (lines that come and go together). The keys never reach the prompt; they are read off each entry's heading.
-- **Entries also land after `</example_dialogs>`**, outside every block. Reading only the three blocks misses them.
-- **`/generateAlpha` is rate limited per account**: a burst of about 6, then about one call per 2 seconds, then 429 `RATE_LIMIT_EXCEEDED`. The recovery paces at 2.1s; never parallelize it.
-- **The prompt writes the account's persona name wherever the definition says `{{user}}`**. The recovery sends a placeholder name and maps it back.
+- One prompt is a random draw. Entries fire by keyword and chance under a per prompt cap, even with no keywords. Only many prompts separate the definition (in every prompt) from entries (lines that come and go together). Keys never reach the prompt, they are read off each entry's heading.
+- Entries also land after `</example_dialogs>`, outside every block.
+- `/generateAlpha` is rate limited per account (a burst of about 6, then one per 2s, then 429 `RATE_LIMIT_EXCEEDED`). Recovery paces at 2.1s. Never parallelize it.
+- The prompt writes the account's persona name wherever the definition says `{{user}}`. Recovery sends a placeholder name and maps it back.
