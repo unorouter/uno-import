@@ -25,6 +25,92 @@ data:
     routes = ["GET /v1/publicip/ip", "GET /v1/vpn/status", "PUT /v1/vpn/status"]
     auth = "none"
 ---
+# PIA's own Netherlands config, resolved on every container start. gluetun's
+# hardcoded PIA list went stale twice in a week (2026-11-19, 2026-11-25: every
+# 158.173.x server it knew was retired, newest image included), while PIA's
+# hostname always points at live servers. gluetun's custom provider takes only
+# an IP on the remote line, hence the start script.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: uno-import-pia
+  namespace: uno-import
+data:
+  start.sh: |
+    #!/bin/sh
+    set -e
+    IP=$(nslookup nl-amsterdam.privacy.network | awk '/^Address/ && $NF !~ /[:#]/ {print $NF}' | shuf -n1)
+    [ -n "$IP" ] || { echo "cannot resolve nl-amsterdam.privacy.network"; exit 1; }
+    echo "PIA endpoint $IP"
+    sed "s/^remote .*/remote $IP 1197/" /pia/netherlands.ovpn > /tmp/custom.conf
+    exec /gluetun-entrypoint
+  netherlands.ovpn: |
+    client
+    dev tun
+    proto udp
+    remote nl-amsterdam.privacy.network 1197
+    resolv-retry infinite
+    nobind
+    persist-key
+    persist-tun
+    cipher aes-256-cbc
+    auth sha256
+    tls-client
+    remote-cert-tls server
+
+    auth-user-pass
+    compress
+    verb 1
+    reneg-sec 0
+
+    <ca>
+    -----BEGIN CERTIFICATE-----
+    MIIHqzCCBZOgAwIBAgIJAJ0u+vODZJntMA0GCSqGSIb3DQEBDQUAMIHoMQswCQYD
+    VQQGEwJVUzELMAkGA1UECBMCQ0ExEzARBgNVBAcTCkxvc0FuZ2VsZXMxIDAeBgNV
+    BAoTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMSAwHgYDVQQLExdQcml2YXRlIElu
+    dGVybmV0IEFjY2VzczEgMB4GA1UEAxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3Mx
+    IDAeBgNVBCkTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMS8wLQYJKoZIhvcNAQkB
+    FiBzZWN1cmVAcHJpdmF0ZWludGVybmV0YWNjZXNzLmNvbTAeFw0xNDA0MTcxNzQw
+    MzNaFw0zNDA0MTIxNzQwMzNaMIHoMQswCQYDVQQGEwJVUzELMAkGA1UECBMCQ0Ex
+    EzARBgNVBAcTCkxvc0FuZ2VsZXMxIDAeBgNVBAoTF1ByaXZhdGUgSW50ZXJuZXQg
+    QWNjZXNzMSAwHgYDVQQLExdQcml2YXRlIEludGVybmV0IEFjY2VzczEgMB4GA1UE
+    AxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3MxIDAeBgNVBCkTF1ByaXZhdGUgSW50
+    ZXJuZXQgQWNjZXNzMS8wLQYJKoZIhvcNAQkBFiBzZWN1cmVAcHJpdmF0ZWludGVy
+    bmV0YWNjZXNzLmNvbTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBALVk
+    hjumaqBbL8aSgj6xbX1QPTfTd1qHsAZd2B97m8Vw31c/2yQgZNf5qZY0+jOIHULN
+    De4R9TIvyBEbvnAg/OkPw8n/+ScgYOeH876VUXzjLDBnDb8DLr/+w9oVsuDeFJ9K
+    V2UFM1OYX0SnkHnrYAN2QLF98ESK4NCSU01h5zkcgmQ+qKSfA9Ny0/UpsKPBFqsQ
+    25NvjDWFhCpeqCHKUJ4Be27CDbSl7lAkBuHMPHJs8f8xPgAbHRXZOxVCpayZ2SND
+    fCwsnGWpWFoMGvdMbygngCn6jA/W1VSFOlRlfLuuGe7QFfDwA0jaLCxuWt/BgZyl
+    p7tAzYKR8lnWmtUCPm4+BtjyVDYtDCiGBD9Z4P13RFWvJHw5aapx/5W/CuvVyI7p
+    Kwvc2IT+KPxCUhH1XI8ca5RN3C9NoPJJf6qpg4g0rJH3aaWkoMRrYvQ+5PXXYUzj
+    tRHImghRGd/ydERYoAZXuGSbPkm9Y/p2X8unLcW+F0xpJD98+ZI+tzSsI99Zs5wi
+    jSUGYr9/j18KHFTMQ8n+1jauc5bCCegN27dPeKXNSZ5riXFL2XX6BkY68y58UaNz
+    meGMiUL9BOV1iV+PMb7B7PYs7oFLjAhh0EdyvfHkrh/ZV9BEhtFa7yXp8XR0J6vz
+    1YV9R6DYJmLjOEbhU8N0gc3tZm4Qz39lIIG6w3FDAgMBAAGjggFUMIIBUDAdBgNV
+    HQ4EFgQUrsRtyWJftjpdRM0+925Y6Cl08SUwggEfBgNVHSMEggEWMIIBEoAUrsRt
+    yWJftjpdRM0+925Y6Cl08SWhge6kgeswgegxCzAJBgNVBAYTAlVTMQswCQYDVQQI
+    EwJDQTETMBEGA1UEBxMKTG9zQW5nZWxlczEgMB4GA1UEChMXUHJpdmF0ZSBJbnRl
+    cm5ldCBBY2Nlc3MxIDAeBgNVBAsTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMSAw
+    HgYDVQQDExdQcml2YXRlIEludGVybmV0IEFjY2VzczEgMB4GA1UEKRMXUHJpdmF0
+    ZSBJbnRlcm5ldCBBY2Nlc3MxLzAtBgkqhkiG9w0BCQEWIHNlY3VyZUBwcml2YXRl
+    aW50ZXJuZXRhY2Nlc3MuY29tggkAnS7684Nkme0wDAYDVR0TBAUwAwEB/zANBgkq
+    hkiG9w0BAQ0FAAOCAgEAJsfhsPk3r8kLXLxY+v+vHzbr4ufNtqnL9/1Uuf8NrsCt
+    pXAoyZ0YqfbkWx3NHTZ7OE9ZRhdMP/RqHQE1p4N4Sa1nZKhTKasV6KhHDqSCt/dv
+    Em89xWm2MVA7nyzQxVlHa9AkcBaemcXEiyT19XdpiXOP4Vhs+J1R5m8zQOxZlV1G
+    tF9vsXmJqWZpOVPmZ8f35BCsYPvv4yMewnrtAC8PFEK/bOPeYcKN50bol22QYaZu
+    LfpkHfNiFTnfMh8sl/ablPyNY7DUNiP5DRcMdIwmfGQxR5WEQoHL3yPJ42LkB5zs
+    6jIm26DGNXfwura/mi105+ENH1CaROtRYwkiHb08U6qLXXJz80mWJkT90nr8Asj3
+    5xN2cUppg74nG3YVav/38P48T56hG1NHbYF5uOCske19F6wi9maUoto/3vEr0rnX
+    JUp2KODmKdvBI7co245lHBABWikk8VfejQSlCtDBXn644ZMtAdoxKNfR2WTFVEwJ
+    iyd1Fzx0yujuiXDROLhISLQDRjVVAvawrAtLZWYK31bY7KlezPlQnl/D9Asxe85l
+    8jO5+0LdJ6VyOs/Hd4w52alDW/MFySDZSfQHMTIc30hLBJ8OnCEIvluVQQ2UQvoW
+    +no177N9L2Y+M9TcTA62ZyMXShHQGeh20rb4kK8f+iFX8NxtdHVSkxMEFSfDDyQ=
+    -----END CERTIFICATE-----
+    </ca>
+
+    disable-occ
+---
 # Chrome's profile directory. local-path is node-local, which suits a Deployment
 # that is pinned to one replica anyway (one browser, one tunnel); a rescheduled
 # pod loses the session and simply logs in again.
@@ -69,17 +155,18 @@ spec:
       shareProcessNamespace: true
       containers:
         - name: vpn
-          # The built-in PIA list ships with the image: v3.40's Netherlands servers
-          # were retired by PIA and every handshake to them failed (2026-11-19).
           image: qmcgaw/gluetun:latest@sha256:659a07992600128046b359406a2259700076a5ec226a289a1ddd626bb9471860
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
+          command: ["/bin/sh", "/pia/start.sh"]
           env:
             - name: VPN_SERVICE_PROVIDER
-              value: "private internet access"
+              value: custom
             - name: VPN_TYPE
               value: openvpn
+            - name: OPENVPN_CUSTOM_CONFIG
+              value: /tmp/custom.conf
             - name: OPENVPN_USER
               valueFrom:
                 { secretKeyRef: { name: uno-import-env, key: OPENVPN_USER } }
@@ -108,19 +195,6 @@ spec:
             # came back up reporting an EMPTY public_ip with no egress at all,
             # which strands every job on "navigation failed" until a manual
             # restart. Probe a target the exits actually serve.
-            # Pin the region. With no filter gluetun draws from 21k servers and
-            # picks a fresh one on every restart, and its killswitch raced that:
-            # the OUTPUT chain held an ACCEPT for the PREVIOUS server's address
-            # while OpenVPN dialed a new one, so every handshake packet was
-            # dropped by our own firewall. No "Initialization Sequence Completed"
-            # ever appeared, egress stayed dead, and public_ip read empty while
-            # the container looked healthy.
-            - name: SERVER_REGIONS
-              value: "Netherlands"
-            # Newer builds take the port from PIA's server list (8080), which
-            # timed out on every handshake; the strong preset answers on 1197.
-            - name: OPENVPN_ENDPOINT_PORT
-              value: "1197"
             - name: HEALTH_TARGET_ADDRESS
               value: "1.1.1.1:443"
             # Generous on purpose: OpenVPN needs time to finish its handshake,
@@ -155,6 +229,8 @@ spec:
           volumeMounts:
             - name: gluetun-auth
               mountPath: /gluetun/auth
+            - name: pia
+              mountPath: /pia
           resources:
             requests: { memory: 64Mi, cpu: 20m }
             limits: { memory: 256Mi }
@@ -237,6 +313,8 @@ spec:
       volumes:
         - name: gluetun-auth
           configMap: { name: uno-import-gluetun-auth }
+        - name: pia
+          configMap: { name: uno-import-pia }
         - name: dshm
           emptyDir: { medium: Memory, sizeLimit: 1Gi }
         - name: browser-profile
