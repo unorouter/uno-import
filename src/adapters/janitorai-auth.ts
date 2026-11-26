@@ -254,7 +254,8 @@ async function completeCard(
     probes: !proxy
       ? 1
       : missing.length > 0 || privateScripts.length > 0
-        ? 25
+        ? // More private books hide more entries. Five hit a flat 25 cap still finding new ones.
+          Math.min(60, 15 + 10 * Math.max(1, missing.length))
         : books.length > 0
           ? 8
           : 1,
