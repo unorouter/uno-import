@@ -1,4 +1,4 @@
-import { isJanitorHost, JANITOR_ORIGIN } from "./janitor-host";
+import { isJanitorHost, janitorOrigin } from "./janitor-host";
 import type { Page } from "rebrowser-puppeteer-core";
 import type { ImportResult, UniformCard } from "../types/uniform-card";
 import { evaluateOn } from "../worker/page-tools";
@@ -49,8 +49,7 @@ export const lorebookId = (input: string) =>
   SCRIPT_URL_RE.exec(input)?.[1]?.toLowerCase() ?? null;
 
 export const matchesLorebook = (url: URL) =>
-  isJanitorHost(url.hostname) &&
-  lorebookId(url.pathname) !== null;
+  isJanitorHost(url.hostname) && lorebookId(url.pathname) !== null;
 
 // Returns a card-shaped result carrying only lorebooks, so one job type and one
 // response shape serve both imports. An "advanced" script comes back as a
@@ -102,7 +101,7 @@ async function fetchScripts(
   return (
     (await evaluateOn<Recovered[]>(
       page,
-      `${JANITOR_ORIGIN}/`,
+      `${janitorOrigin()}/`,
       `${FETCH_SCRIPTS_IN_PAGE}(${JSON.stringify(scriptIds)})`,
     )) ?? []
   );

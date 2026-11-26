@@ -1,8 +1,7 @@
-import { JANITOR_AVATARS, JANITOR_ORIGIN } from "./janitor-host";
+import { JANITOR_AVATARS, gotoJanitor, onJanitor } from "./janitor-host";
 import type { Page } from "rebrowser-puppeteer-core";
 import { READ_ASSET_IN_PAGE } from "./asset-fetch";
 import type { UniformCard } from "../types/uniform-card";
-import { gotoOrigin } from "../worker/page-tools";
 import { toEntries } from "./entries";
 import { fetchAdvancedScripts, recoverLorebooks } from "./janitorai";
 import { recoverViaProxy } from "./janitorai-proxy";
@@ -67,12 +66,10 @@ async function bearer(page: Page): Promise<string | null> {
 
 export async function ensureJanitorLogin(page: Page): Promise<boolean> {
   if (!hasJanitorAuth()) return false;
-  if (!page.url().startsWith(JANITOR_ORIGIN)) {
-    await gotoOrigin(page, `${JANITOR_ORIGIN}/`);
-  }
+  if (!onJanitor(page)) await gotoJanitor(page);
   if (await hasSession(page)) return true;
 
-  await gotoOrigin(page, `${JANITOR_ORIGIN}/login`);
+  await gotoJanitor(page, "/login");
   await sleep(8000);
   try {
     // Input.insertText, NOT page.type: typing the email through key events stops
@@ -323,8 +320,7 @@ export async function fetchJanitorCard(
   id: string,
   url: URL,
 ): Promise<UniformCard | null> {
-  if (!page.url().startsWith(JANITOR_ORIGIN))
-    await gotoOrigin(page, `${JANITOR_ORIGIN}/`);
+  if (!onJanitor(page)) await gotoJanitor(page);
   // Most cards answer anonymously; only the explicit kind needs a session.
   let token: string | null = null;
   let meta = await fetchMeta(page, id, null);
